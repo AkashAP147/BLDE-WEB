@@ -1,0 +1,19 @@
+/* Clean Base Reset */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  min-height: 100vh;
+  font-family: 'Inter', sans-serif;
+  background: #15385f;
+  color: #e2e8f0;
+}
+
+#root {
+  min-height: 100vh;
+}
+

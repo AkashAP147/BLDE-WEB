@@ -36,11 +36,50 @@ export default function Dashboard() {
   const [selectedSem, setSelectedSem] = useState("");
   // Removed toppers state for dashboard
   // For navigation
-  // Only include students of the same branch as the current student (if available)
+  // Only include students of the same college and branch as the current student (if available)
+  function getCollegeCodeFromUsn(usn) {
+    // College code is the first 3 chars (e.g., 2vs, 1me)
+    return usn && usn.length >= 3 ? usn.substring(0, 3).toLowerCase() : '';
+  }
   const currentBranch = student ? student.branch : null;
-  const usnList = currentBranch
-    ? Object.keys(students).filter(k => students[k].branch === currentBranch)
-    : Object.keys(students);
+  const currentCollege = student ? getCollegeCodeFromUsn(student.usn) : null;
+  // Custom USN sorting: regular USNs, then lateral entry for same batch
+  function getBatchFromUsnStr(usn) {
+    if (!usn || usn.length < 10) return '';
+    const match = usn.match(/^(\d\w\w)(\d{2})([a-z]{2})(\d{3})$/i);
+    if (match) {
+      const year = match[2];
+      const num = parseInt(match[4], 10);
+      if (num >= 400) {
+        return `20${String(Number(year) - 1).padStart(2, '0')}`;
+      } else {
+        return `20${year}`;
+      }
+    }
+    return '';
+  }
+  // Filter by college and branch, then sort: regular USNs (num < 400) ascending, then lateral (num >= 400) for same batch
+  let usnList = Object.keys(students);
+  if (currentCollege) {
+    usnList = usnList.filter(k => getCollegeCodeFromUsn(k) === currentCollege);
+  }
+  if (currentBranch) {
+    usnList = usnList.filter(k => students[k].branch === currentBranch);
+  }
+  if (student && student.usn) {
+    // Get batch for current student
+    const batch = getBatchFromUsnStr(student.usn);
+    // Partition into regular and lateral for this batch
+    const regular = usnList.filter(k => {
+      const m = k.match(/^(\d\w\w)(\d{2})([a-z]{2})(\d{3})$/i);
+      return m && parseInt(m[4], 10) < 400 && getBatchFromUsnStr(k) === batch;
+    }).sort();
+    const lateral = usnList.filter(k => {
+      const m = k.match(/^(\d\w\w)(\d{2})([a-z]{2})(\d{3})$/i);
+      return m && parseInt(m[4], 10) >= 400 && getBatchFromUsnStr(k) === batch;
+    }).sort();
+    usnList = [...regular, ...lateral];
+  }
   const currentIndex = student ? usnList.findIndex(k => k.toLowerCase() === student.usn.toLowerCase()) : -1;
 
   // Keyboard navigation handler (left/right for students, up/down for semesters)
@@ -143,6 +182,45 @@ export default function Dashboard() {
   };
 
   // Removed toppers effect for dashboard
+
+  // Helper to display correct USN for lateral entry
+  function getDisplayUsn(s) {
+    // Lateral entry: usn like 2vs23ci400, batch 2022, join year 2023, 3rd sem
+    // For USN ending with 400+, batch = usn year - 1
+    if (!s || !s.usn) return '';
+    const usn = s.usn;
+    if (usn.length >= 10) {
+      const match = usn.match(/^(\d\w\w)(\d{2})([a-z]{2})(\d{3})$/i);
+      if (match) {
+        const prefix = match[1];
+        const year = match[2];
+        const branch = match[3];
+        const num = parseInt(match[4], 10);
+        return `${prefix}${year}${branch}${match[4]}`.toUpperCase();
+      }
+    }
+    return usn;
+  }
+
+  // Helper to get batch from USN (for lateral entry)
+  function getBatchFromUsn(s) {
+    if (!s || !s.usn) return s.batch || '';
+    const usn = s.usn;
+    if (usn.length >= 10) {
+      const match = usn.match(/^(\d\w\w)(\d{2})([a-z]{2})(\d{3})$/i);
+      if (match) {
+        const year = match[2];
+        const num = parseInt(match[4], 10);
+        // For lateral entry (400+), batch = usn year - 1
+        if (num >= 400) {
+          return `20${String(Number(year) - 1).padStart(2, '0')}`;
+        } else {
+          return `20${year}`;
+        }
+      }
+    }
+    return s.batch || '';
+  }
 
   return (
     <Box
@@ -250,7 +328,10 @@ export default function Dashboard() {
                 {student.name}
               </Typography>
               <Typography sx={{ color: '#94a3b8', mb: 2, fontSize: { xs: 13, sm: 16 } }}>
-                {student.branch} | Batch {student.batch}
+                {student.branch} | Batch {getBatchFromUsn(student)}
+              </Typography>
+              <Typography sx={{ color: '#38bdf8', mb: 1, fontSize: { xs: 13, sm: 15 } }}>
+                USN: {getDisplayUsn(student)}
               </Typography>
 
               {/* Semester Buttons - horizontal sliding window for mobile */}

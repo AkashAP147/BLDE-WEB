@@ -17,7 +17,7 @@ export default function About() {
             About the Developer
           </Typography>
           <Typography sx={{ color: '#2d3034', fontSize: { xs: 15, sm: 17 } }}>
-            Developed by <b>Akash Patil</b>, a passionate web developer and engineer. Akash specializes in building robust, user-centric web applications with a focus on performance and accessibility. For feedback or collaboration, connect at <a href="mailto:akashpatil147@gmail.com" style={{ color: '#38bdf8' }}>akashpatil147@gmail.com</a>.
+            Developed by <b>Akash Patil</b>, a passionate web developer and engineer. Akash specializes in building robust, user-centric web applications with a focus on performance and accessibility. For feedback or collaboration, connect at <a href="mailto:akashpatil147@gmail.com" style={{ color: '#38bdf8' }}>akashscience147@gmail.com</a>.
           </Typography>
         </CardContent>
       </Card>

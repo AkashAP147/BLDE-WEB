@@ -21,28 +21,255 @@ export default function Toppers() {
   const [semFilter, setSemFilter] = useState("");
   const [batchFilter, setBatchFilter] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
+  const [collegeFilter, setCollegeFilter] = useState("");
   const [allSems, setAllSems] = useState([]);
   const [allBatches, setAllBatches] = useState([]);
   const [allBranches, setAllBranches] = useState([]);
+  const [allColleges, setAllColleges] = useState([]);
 
   useEffect(() => {
+    // College code dictionary (shortened for brevity, use your full list)
+    const college_code_dict = {
+    //Bengaluru
+    "ACHARAYA INSTITUTE OF TECHNOLOGY": "1AY",
+    "A.P.S COLLEGE OF ENGINEERING.": "1AP",
+    "AMC ENGINEERING COLLEGE": "1AM",
+    "AMRUTHA INSTITUTE OF ENGINEERING AND MGMT. SCIENCES": "1AR",
+    "ATRIA INSTITUTE OF TECHNOLOGY": "1AT",
+    "BENGALURU COLLEGE OF ENGINEERING AND TECHNOLOGY": "1BC",
+    "BENGALURU INSTITUTE OF TECHNOLOGY": "1BI",
+    "BRINDAVAN COLLEGE OF ENGG": "1BO",
+    "C.M.R INSTITUTE OF TECHNOLOGY": "1CR",
+    "CAMBRIDGE INSTITUTE OF TECHNOLOGY": "1CD",
+    "CHANNA BASAVESHWARA INSTITUTE OF TECHNOLOGY": "1CG",
+    "CITY ENGINEERING COLLEGE": "1CE",
+    "DON BOSCO INSTITUTE OF TECHNOLOGY": "1DB",
+    "DR. T THIMAIAH INSTITUTE OF TECHNOLOGY": "1GV",
+    "EAST point COLLEGE OF ENGINEERING AND TECHNOLOGY": "1EP",
+    "EAST WEST INSTITUTE OF TECHNOLOGY": "1EW",
+    "GHOUSIA COLLEGE OF ENGINEERING": "1GC",
+    "GOVERNMENT S.K.S.J.T. INSTITUTE OF TECHNOLOGY": "1SK",
+    "GOVERNMENT TOOL ROOM AND TRAINING CENTRE": "1GT",
+    "GOVT. ENGINEERING COLLEGE RAMNAGAR": "1GG",
+    "HKBK COLLEGE OF ENGINEERING": "1HK",
+    "HMS INSTITUTE OF TECHNOLOGY": "1HM",
+    "IMPACT COLLEGE OF ENGINEERING": "1IC",
+    "JNANA VIKAS INSTITUTE OF TENCNOLOGY": "1JV",
+    "JSS ACADEMY OF TECHNICIAL EDUCATION": "1JS",
+    "K.S.INSTITUTE OF TECHNOLOGY": "1KS",
+    "KALPATARU INSTITUTE OF TECHNOLOGY": "1KI",
+    "KNS INSTITUTE OF TECHNOLOGY": "1KN",
+    "M.S.ENGINEERING COLLEGE": "1ME",
+    "OXFORD COLLEGE OF ENGINEERING": "1OX",
+    "R R INSTITUTE OF TECHNOLOGY": "1RI",
+    "R.L.JALAPPA INSTITUTE OF TECHNOLOGY": "1RL",
+    "RAJARAJESWARI COLLEGE OF ENGINEERING": "1RR",
+    "RAJIV GANDHI INSTITUTE OF TECHNOLOGY": "1RG",
+    "RNS INSTITUTE OF TECHNOLOGY": "1RN",
+    "S.J.C INSTITUTE OF TECHNOLOGY": "1SJ",
+    "SAI VIDYA INSTITUTE OF TECHNOLOGY": "1VA",
+    "SAMBHRAM INSTITUTE OF TECHNOLOGY": "1ST",
+    "SAPTHAGIRI COLLEGE OF ENGINEERING": "1SG",
+    "SEA COLLEGE OF ENGINEERING AND TECHNOLOGY": "1SP",
+    "SRI SAIRAM COLLEGE OF ENGINEERING": "1SB",
+    "SHIRDEVI INSTITUTE OF ENGINEERING AND TECHNOLOGY": "1SV",
+    "SIR M. VISVESVARAYA INSTITUTE OF TECHNOLOGY": "1MV",
+    "SJB INSTITUTE OF TECHNOLOGY": "1JB",
+    "SRI KRISHNA INSTITUTE OF TECHNOLOGY": "1KT",
+    "SRI REVANASIDDESHWARA INSTITUTE OF TECHNOLOGY": "1RC",
+    "SRI VENKATESHWARA COLLEGE OF ENGINEERING": "1VE",
+    "T. JOHN INSTITUTE OF TECHNOLOGY": "1TJ",
+    "VEMANA INSTITUTE OF TECHNOLOGY": "1VI",
+    "VIVEKANANDA INSTITUTE OF TECHNOLOGY": "1VK",
+    "ACHARYS NRV SCHOOL OF ARCHITECTURE": "1AA",
+    "ACS COLLEGE OF ENGINEERING": "1AH",
+    "AKSHAYA INSTITUTE OF TECHNOLOGY": "1AK",
+    "C BYEREGOWDA INSTITUTE OF TECHNOLOGY": "1CK",
+    "VIJAYA VITTALA INSTITUTE OF TECHNOLOGY": "1VJ",
+    "SHASHIB COLLEGE OF ENGINEERING": "1HS",
+    "SAMPOORNA INSTITUTE OF TECHNOLOGY RESEARCH": "1SZ",
+    "K.S SCHOOL OF ENGG & MGMT": "1KG",
+    "GOPALAN COLLEGE OF ENGINEERING MANAGEMENT": "1GD",
+    "BENGALURU TECHNOLOGICAL INSTITUTE": "1BH",
+    "JYOTHY INSTITUTE OF TECHNOLOGY": "1JT",
+    "DAYANANDA SAGAR ACADEMY OF TECHNOLOGY AND MGMT.": "1DT",
+    "CAMBRIDGE INSITUTE OF TECHNOLOGY NORTH CAMPUS BANGALORE": "1AJ",
+    "DAYANAND SAGAR SCHOOL OF ARCHITECTURE": "1DC",
+    "IMPACT SCHOOL OF ARCHITECTURE": "1IS",
+    "R V COLLEGE OF ARCHITECTURE": "1RW",
+    "BMS SCHOOL OF ARCHITECTURE": "1BQ",
+    "S J B School of Arch. & Planning": "1JA",
+    "GOPALAN SCHOOL OF ARCHITECTURE & PLANNING": "1GO",
+    "R.R. SCHOOL OF ARCHITECTURE": "1RR",
+    "ADITHYA ACADEMY OF ARCHITECTURE & DESGIN": "1AN",
+    "BGS SCHOOL OF ARCHITECTURE & PLANNING": "1PC",
+    "K S SCHOOL OF ARCHITECTURE": "1KF",
+    "EAST WEST COLLEGE OF ENGG": "1EE",
+    "SRI VINAYAKA INSTITUTE OF TECHNOLOGY": "1VB",
+    "Sir. M. V. School of Architecture": "1IV",
+    "Nitte School of Architecture": "1NS",
+    "HMS School of Architecture": "1IT",
+    "Brindavan College of Architecture": "1IE",
+    "BMS College of Architecture": "1CF",
+    "OXFORD SCHOOL OF ARCHITECTURE": "1OQ",
+    "RNS SCHOOL OF ARCHITECTURE": "1RQ",
+    "SRI BASAVESHWAR INSTITUTE OF TECHNOLOGY": "1SW",
+    "R V INSTITUTE OF TECHNOLOGY AND MGMT": "1RF",
+    "EAST WEST SCHOOL OF ARCHITECTURE": "1WS",
+    "BGS College of Engineering & Technology": "1",
+    "Aditya College of Engineering & Technology": "1",
+    "Akash Institute of Engineering & Technology": "1",
+    "Ghousia Institute of Technology for Women": "1",
+    //Belagavi
+    "ANJUMAN  INSTITUTE OF TECHNOLOGY & MANAGEMENT": "2AB",
+    "BLDEAS COLLEGE OF ENGINEERING": "2BL",
+    "GOVT. ENGINEERING COLLEGE HAVERI": "2GO",
+    "HIRASUGAR INSTITUTE OF TECHNOLOGY": "2HN",
+    "KLE COLLEGE OF ENG. AND TECHNOLOGY CHIKODI": "2KD",
+    "KLE INSTITUTE OF TECH HUBLI": "2KE",
+    "KLE Dr M. S. SHESHGIRI COLLEGE OF ENGINEERING AND TECHNOLOGY": "2KL",
+    "MALIK SANDAL INSTITUTE OF ART AND ARCHITECTURE": "2MB",
+    "MARATHA MANDALS ENGINEERING COLLEGE": "2MM",
+    "RURAL ENGINEERING COLLEGE, HULKOTI": "2RH",
+    "S G BALEKUNDRI INST. OF TECH": "2BU",
+    "S.T.J. INSTITUTE OF TECHNOLOGY": "2SR",
+    "SECAB INSTITUTE OF ENGINEERING AND TECHNOLOGY": "2SA",
+    "SMT. KAMALA AND SRI VENKAPPA M. AGADI COLLEGE OF ENGINEERING AND TECHNOLOGY": "2KA",
+    "SRI TONTADARAYA COLLEGE OF ENGINEERING": "2TG",
+    "VISHWANATHARAO DESHPANDE INSTITUTE OF TECHNOLOGY, HALIYAL": "2VD",
+    "GOVT. ENGINEERING COLLEGE HUVINHADAGALI": "2GB",
+    "GOVERNMENT ENGINEERING COLLEGE KARWAR": "2GP",
+    "ANGADI INSTITUTE OF TECHNOLOGY AND MGMT.": "2AG",
+    "JAIN COLLEGE OF ENGINEERING": "2JI",
+    "V S M’S INSTITUTE OF TECHNOLOGY": "2VS",
+    "AGM RURAL COLLEGE OF ENGINEERING & TECHNOLOGY": "2AV",
+    "GRIJABAI SAIL INSTITUTE OF TECHNOLOGY KARWAR": "2GJ",
+    "BILURU GURUBASAVA MAHASWAMIJI INSTITUTE OF TECHNOLOGY": "2LB",
+    "BASAVA ENGG SCHOOL OF TECHNOLOGY ZALAKI": "2VL",
+    "JAIN COLLEGE OF ENGG HUBBALLI": "2IH",
+    "GOVERNMENT ENGINEERING COLLEGE, TALAKAL": "2LG",
+    "ANGADI SCHOOL OF ARCHITECTURE BELAGAVI": "2KF",
+    "JAIN COLLEGE OF ENGINEERING & RESEARCH BELAGAVI": "2JR",
+    "Govt.Engineering College,Ron Road": "2",
+    //Kalaburagi
+    "BASAVAKALYAN ENGINEERING COLLEGE": "3BK",
+    "GOVT. ENGINEERING COLLEGE RAICHUR": "3GU",
+    "GURU NANAK DEV ENGINEERING COLLEGE": "3GN",
+    "K.C.T. ENGINEERING COLLEGE": "3KC",
+    "KHAJA BANDA NAWAZ COLLEGE OF ENGINEERING": "3KB",
+    "NAVODAYA INSTITUTE OF TECHNOLOGY": "3NA",
+    "PROUDADEVARAYA INSTITUTE OF TECHNOLOGY": "3PG",
+    "RAO BAHADDUR Y MAHABALESHWARAPPA ENGG COLLEGE": "3VC",
+    "BHEEMANNA KHANDRE INSTITUTE OF TECHNOLOGY, BHALKI": "3RB",
+    "SLN COLLEGE OF ENGINEERING": "3SL",
+    "VEERAPPA NISTY ENGINEERING COLLEGE": "3VN",
+    "LINGARAJ APPA ENGINEERING COLLEGE": "3LA",
+    "GODUTAI ENGINEERING COLLEGE FOR WOMEN": "3GF",
+    "SHETTY INSTITUTE OF TECHNOLOGY": "3TS",
+    "GOVERNMENT ENGINEERING COLLEGE,GANGAVATI": "3NG",
+    "GOVERNMENT ENGINEERING COLLEGE,BIDAR": "3NG",
+    "Poojya Dr. Shivakumar Swamiji School of Architecture Kalaburagi": "3NG",
+    //Mysuru
+    "ADICHUNCHANAGIRI INSTITUTE OF TECHNOLOGY": "4AI",
+    "ALVAS INST. OF ENGG. AND TECHNOLOGY": "4AL",
+    "BAHUBALI COLLEGE OF ENGINEERING": "4BB",
+    "BAPUJI INSTITUTE OF ENGINEERING AND TECHNOLOGY": "4BD",
+    "BEARYS INSTITUTE OF TECHNOLOGY": "4BP",
+    "CANARA ENGINEERING COLLEGE": "4CB",
+    "COORG INSTITUTE OF TECHNOLOGY": "4CI",
+    "YENEPOYA INSTITUTE OF TECHNOLOGY": "4DM",
+    "GM.INSTITUTE OF TECHONOLOGY": "4GM",
+    "GOVT. ENGINEERING COLLEGE CHAMARAJANAGARA": "4GE",
+    "GOVT. ENGINEERING COLLEGE HASSAN": "4GH",
+    "GOVT. ENGINEERING COLLEGE KUSHAL NAGAR": "4GL",
+    "GOVT. ENGINEERING COLLEGE MANDYA": "4GK",
+    "GOVT. TOOL ROOM AND TRAINING CENTRE": "4GR",
+    "GSSS INSTITUTE OF ENGINEERING AND TECHNOLOGY FOR WOMEN": "4GW",
+    "JAWAHARLAL NEHRU NATIONAL COLLEGE OF ENGINERING": "4JN",
+    "K.V.G. COLLEGE OF ENGINEERING": "4KV",
+    "KARAVALI INSTITUTE OF TECHNOLOGY": "4KM",
+    "MAHARAJA INSTITUTE OF TECHNOLOGY MYSORE": "4MH",
+    "MANGALORE INSTITUTE OF TECHNOLOGY AND ENGINEERING": "4MT",
+    "MOODLAKATTE INSTITUTE OF TECHONOLOGY": "4MK",
+    "NIE INST. OF TECHNOLOGY": "4NN",
+    "P.A.COLLEGE OF ENGINEERING": "4PA",
+    "PES INSITUTE OF TECHNOLOGY AND MGMT.": "4PM",
+    "RAJEEV INST. OF TECHNOLOGY": "4RA",
+    "SHREE DEVI INSTITUTE OF TECHNOLOGY": "4SH",
+    "SJM INSTITUTE OF TECHNOLOGY": "4SM",
+    "SRI DHARMASTHAL MANJUNATHESHWAR INSTITUTE OF TECHNOLOGY": "4SU",
+    "SRI JAYACHAMRAJENDRA COLLEGE OFF ENGG. EVENING": "4JE",
+    "SRINIVAS INSTITUTE OF TECHNOLOGY": "4SN",
+    "VIDYA VIKAS INSTITUTE OF ENGINEERING AND TECHNOLOGY": "4VM",
+    "VIVEKANANDA COLLEGE OF ENGINEERING AND TECHNOLOGY": "4VP",
+    "NAVKIS COLLEGE OF ENGINEERING HASSAN": "4YG",
+    "SHRI MADHWA VADIRAJA INSTITUTE OF TECHNOLOGY & MANAGEMENT": "4MW",
+    "ACADEMY FOR TECHNICAL AND MANAGEMENT EXCELLENCE": "4AD",
+    "UBDT ENGINEERING  COLLEGE DAVANAGERE ( Constituent College of VTU )": "4UB",
+    "G MADEGOWDA INSTITUTE OF TECHNOLOGY": "4MG",
+    "JAIN INSTITUTE OF TECHNOLOGY": "4JD",
+    "MANGALORE MARINE COLLEGE & TECHNOLOGY": "4MR",
+    "CAUVERY INSTITUTE OF TECHNOLOGY": "4CA",
+    "MYSORE SCHOOL OF ARCHITECTURE": "4MA",
+    "BEARYS ENVIRONMENT ARCHITECTURE DESIGN SCHOOL MANGALORE": "4ED",
+    "MYSORE COLLEGE OF ENGINEERING AND MANAGEMENT": "4MO",
+    "MYSURU ROYAL INSTITUTE OF TECHNOLOGY": "4MU",
+    "WADIYAR CENTRE FOR ARCHITECTURE": "4CM",
+    "Maharaja Institute of Technology": "4MN",
+    "A. J. Institute of Engineering": "4JK",
+    "GOVERNMENT ENGINEERING COLLEGE,MOSALE HOSAHALLI": "4HG",
+};
     const studentsRef = ref(db, "students");
     onValue(studentsRef, (snapshot) => {
       const students = snapshot.val() || {};
-      // Collect all unique semesters, batches, branches
+      // Collect all unique semesters, batches, branches, colleges
       const semSet = new Set();
       const batchSet = new Set();
       const branchSet = new Set();
-      Object.values(students).forEach(data => {
+      const collegeSet = new Set();
+      Object.entries(students).forEach(([usn, data]) => {
         if (data.semesters) {
           Object.keys(data.semesters).forEach(sem => semSet.add(sem));
         }
         if (data.batch) batchSet.add(data.batch);
         if (data.branch) branchSet.add(data.branch);
+        // College code is first 3 chars of usn (case-insensitive)
+        if (usn && usn.length >= 3) {
+          collegeSet.add(usn.substring(0, 3).toUpperCase());
+        }
       });
-      setAllSems(Array.from(semSet).sort((a, b) => Number(a) - Number(b)));
+      // Filter semSet based on selected college, batch, branch
+      let filteredSemSet = new Set();
+      Object.entries(students).forEach(([usn, data]) => {
+        // College code is first 3 chars of usn
+        let collegeCode = usn && usn.length >= 3 ? usn.substring(0, 3).toUpperCase() : "";
+        if (
+          (!collegeFilter || collegeCode === collegeFilter) &&
+          (!batchFilter || data.batch === batchFilter) &&
+          (!branchFilter || data.branch === branchFilter)
+        ) {
+          if (data.semesters) {
+            Object.keys(data.semesters).forEach(sem => filteredSemSet.add(sem));
+          }
+        }
+      });
+      setAllSems(Array.from(filteredSemSet).sort((a, b) => Number(a) - Number(b)));
       setAllBatches(Array.from(batchSet).sort());
       setAllBranches(Array.from(branchSet).sort());
+      // Map code to name for only available colleges
+      const codeToName = {};
+      Object.entries(college_code_dict).forEach(([name, code]) => {
+        if (collegeSet.has(code)) {
+          codeToName[code] = name;
+        }
+      });
+      // If a code is present in data but not in dict, show code as name
+      collegeSet.forEach(code => {
+        if (!codeToName[code]) codeToName[code] = code;
+      });
+      // Sort by name
+      const sortedColleges = Array.from(collegeSet).map(code => ({ code, name: codeToName[code] })).sort((a, b) => a.name.localeCompare(b.name));
+      setAllColleges(sortedColleges);
 
       // Flatten all semesters for all students
       let allToppers = [];
@@ -77,6 +304,8 @@ export default function Toppers() {
               (sum, subj) => sum + (parseInt(subj.total) || 0),
               0
             );
+            // Add college code for filtering
+            let collegeCode = usn && usn.length >= 3 ? usn.substring(0, 3).toUpperCase() : "";
             allToppers.push({
               usn,
               name: data.name,
@@ -84,6 +313,7 @@ export default function Toppers() {
               batch: data.batch,
               sem,
               total,
+              collegeCode,
             });
           });
         }
@@ -122,31 +352,74 @@ export default function Toppers() {
               mb: 5,
             }}
           >
-            Top 10 Toppers
+            Toppers
           </Typography>
           {/* Filters */}
           <Box mb={2} display="flex" flexWrap="wrap" gap={2} justifyContent="center">
-            {/* Batch Filter */}
+            {/* College Filter */}
             <select
-              value={batchFilter}
-              onChange={e => setBatchFilter(e.target.value)}
-              style={{ width: 120, padding: 8, borderRadius: 6, marginTop: 4, color: batchFilter ? '#000000' : '#353232' }}
+              value={collegeFilter}
+              onChange={e => {
+                setCollegeFilter(e.target.value);
+                setBatchFilter("");
+                setBranchFilter("");
+                setSemFilter("");
+              }}
+              style={{ width: 180, padding: 8, borderRadius: 6, marginTop: 4, color: collegeFilter ? '#000000' : '#353232' }}
             >
-              <option value="" disabled selected hidden>Batch</option>
-              {allBatches.map(b => (
-                <option key={b} value={b}>{b}</option>
+              <option value="" disabled hidden>College</option>
+              {allColleges.map(c => (
+                <option key={c.code} value={c.code}>{c.name}</option>
               ))}
             </select>
-            {/* Branch Filter (no 'All' option) */}
+            {/* Batch Filter (filtered by college) */}
+            <select
+              value={batchFilter}
+              onChange={e => {
+                setBatchFilter(e.target.value);
+                setBranchFilter("");
+                setSemFilter("");
+              }}
+              style={{ width: 120, padding: 8, borderRadius: 6, marginTop: 4, color: batchFilter ? '#000000' : '#353232' }}
+            >
+              <option value="" disabled hidden>Batch</option>
+              {Array.from(
+                new Set(
+                  toppers
+                    .filter(s => (collegeFilter ? s.collegeCode === collegeFilter : true))
+                    .map(s => s.batch)
+                )
+              )
+                .sort()
+                .map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+            </select>
+            {/* Branch Filter (filtered by college and batch) */}
             <select
               value={branchFilter}
-              onChange={e => setBranchFilter(e.target.value)}
+              onChange={e => {
+                setBranchFilter(e.target.value);
+                setSemFilter("");
+              }}
               style={{ width: 120, padding: 8, borderRadius: 6, marginTop: 4, color: branchFilter ? '#000000' : '#353232' }}
             >
-              <option value="" disabled selected hidden>Branch</option>
-              {allBranches.map(b => (
-                <option key={b} value={b}>{b}</option>
-              ))}
+              <option value="" disabled hidden>Branch</option>
+              {Array.from(
+                new Set(
+                  toppers
+                    .filter(s =>
+                      (collegeFilter ? s.collegeCode === collegeFilter : true) &&
+                      (batchFilter ? s.batch === batchFilter : true)
+                    )
+                    .map(s => s.branch)
+                    .filter(b => b && b !== "undefined" && b !== "null")
+                )
+              )
+                .sort()
+                .map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
             </select>
           </Box>
           {/* Semester Filter - horizontal sliding window, mobile fix */}
@@ -169,30 +442,46 @@ export default function Toppers() {
                 '&::-webkit-scrollbar': { display: 'none' },
               }}
             >
-              {allSems.map(s => (
-                <button
-                  key={s}
-                  onClick={() => setSemFilter(s)}
-                  style={{
-                    minWidth: 70,
-                    fontWeight: 700,
-                    borderRadius: 6,
-                    background: semFilter === s ? 'linear-gradient(to right, #4f46e5, #0ea5e9)' : '#e0e7ef',
-                    color: semFilter === s ? '#fff' : '#23272f',
-                    fontSize: 15,
-                    padding: '6px 18px',
-                    marginRight: 8,
-                    border: 'none',
-                    boxShadow: semFilter === s ? '0 2px 8px #4f46e522' : 'none',
-                    transition: 'all 0.2s',
-                    flex: '0 0 auto',
-                    outline: semFilter === s ? '2px solid #0ea5e9' : 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Sem {s}
-                </button>
-              ))}
+              {Array.from(
+                new Set(
+                  toppers
+                    .filter(s =>
+                      (collegeFilter ? s.collegeCode === collegeFilter : true) &&
+                      (batchFilter ? s.batch === batchFilter : true) &&
+                      (branchFilter ? s.branch === branchFilter : true)
+                    )
+                    .map(s => s.sem)
+                    .filter(s => {
+                      const n = Number(s);
+                      return Number.isInteger(n) && n >= 1 && n <= 8;
+                    })
+                )
+              )
+                .sort((a, b) => Number(a) - Number(b))
+                .map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setSemFilter(s)}
+                    style={{
+                      minWidth: 70,
+                      fontWeight: 700,
+                      borderRadius: 6,
+                      background: semFilter === s ? 'linear-gradient(to right, #4f46e5, #0ea5e9)' : '#e0e7ef',
+                      color: semFilter === s ? '#fff' : '#23272f',
+                      fontSize: 15,
+                      padding: '6px 18px',
+                      marginRight: 8,
+                      border: 'none',
+                      boxShadow: semFilter === s ? '0 2px 8px #4f46e522' : 'none',
+                      transition: 'all 0.2s',
+                      flex: '0 0 auto',
+                      outline: semFilter === s ? '2px solid #0ea5e9' : 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Sem {s}
+                  </button>
+                ))}
             </Box>
           </Box>
           {loading ? (
@@ -237,9 +526,9 @@ export default function Toppers() {
                       .filter(s =>
                         (semFilter ? s.sem === semFilter : false) &&
                         (batchFilter ? s.batch === batchFilter : true) &&
-                        (branchFilter ? s.branch === branchFilter : true)
+                        (branchFilter ? s.branch === branchFilter : true) &&
+                        (collegeFilter ? s.collegeCode === collegeFilter : true)
                       )
-                      .slice(0, 10)
                       .map((s, i) => (
                         <TableRow key={s.usn + s.sem} hover>
                           <TableCell>{i + 1}</TableCell>

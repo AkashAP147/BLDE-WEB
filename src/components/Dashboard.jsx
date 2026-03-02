@@ -130,6 +130,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const resultRef = useRef(null);
   const [highlightFail, setHighlightFail] = useState(true);
+  const [showSgpaCgpa, setShowSgpaCgpa] = useState(false);
+  const [credits, setCredits] = useState({}); // { [sem]: { [subjectCode]: creditValue } }
 
   useEffect(() => {
     const studentsRef = ref(db, "students");
@@ -220,6 +222,40 @@ export default function Dashboard() {
       }
     }
     return s.batch || '';
+  }
+
+  // VTU Grade and Grade Point mapping for SGPA/CGPA calculation
+  function getGradeAndPoints(subj) {
+    const result = (subj.result || '').trim().toUpperCase();
+    // Direct grade mapping if result is a known grade letter
+    const gradeMap = { 'S': 10, 'O': 10, 'A': 9, 'B': 8, 'C': 7, 'D': 6, 'E': 5 };
+    if (gradeMap[result] !== undefined) return { grade: result, points: gradeMap[result] };
+    // Fail cases
+    const isFail = result === 'F' || result.includes('FAIL') || result === 'AB' || result === 'X' || result === 'NE';
+    if (isFail) return { grade: 'F', points: 0 };
+    // For 'P' (pass) or unknown — derive grade from marks percentage
+    const total = parseInt(subj.total) || 0;
+    const maxMarks = total > 100 ? 200 : 100;
+    const pct = (total / maxMarks) * 100;
+    if (pct >= 90) return { grade: 'S', points: 10 };
+    if (pct >= 80) return { grade: 'A', points: 9 };
+    if (pct >= 70) return { grade: 'B', points: 8 };
+    if (pct >= 60) return { grade: 'C', points: 7 };
+    if (pct >= 50) return { grade: 'D', points: 6 };
+    if (pct >= 40) return { grade: 'E', points: 5 };
+    return { grade: 'F', points: 0 };
+  }
+
+  // Handle credit input change for SGPA/CGPA
+  function handleCreditChange(sem, code, value) {
+    const numVal = value === '' ? '' : (parseInt(value) || 0);
+    setCredits(prev => ({
+      ...prev,
+      [sem]: {
+        ...(prev[sem] || {}),
+        [code]: numVal
+      }
+    }));
   }
 
   return (
@@ -436,13 +472,20 @@ export default function Dashboard() {
                       </Typography>
 
                       {/* Toggle for highlighting failed subjects */}
-                      <Box mb={2}>
+                      <Box mb={2} sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                         <Button
                           variant={highlightFail ? 'contained' : 'outlined'}
                           sx={{ background: highlightFail ? '#1e40af' : undefined, fontWeight: 700, borderRadius: 2 }}
                           onClick={() => setHighlightFail(v => !v)}
                         >
                           {highlightFail ? 'Hide' : 'Show'} Failed Subject Highlight
+                        </Button>
+                        <Button
+                          variant={showSgpaCgpa ? 'contained' : 'outlined'}
+                          sx={{ background: showSgpaCgpa ? '#0ea5e9' : undefined, fontWeight: 700, borderRadius: 2 }}
+                          onClick={() => setShowSgpaCgpa(v => !v)}
+                        >
+                          {showSgpaCgpa ? 'Hide' : 'Calculate'} SGPA & CGPA
                         </Button>
                       </Box>
 
@@ -503,6 +546,10 @@ export default function Dashboard() {
                               <TableCell>External</TableCell>
                               <TableCell>Total</TableCell>
                               <TableCell>Result</TableCell>
+                              {showSgpaCgpa && <TableCell>Credits</TableCell>}
+                              {showSgpaCgpa && <TableCell>Grade</TableCell>}
+                              {showSgpaCgpa && <TableCell>GP</TableCell>}
+                              {showSgpaCgpa && <TableCell>CP</TableCell>}
                             </TableRow>
                           </TableHead>
                           <TableBody>
@@ -517,6 +564,9 @@ export default function Dashboard() {
                               })
                               .map(([code, subj]) => {
                                 const isFail = highlightFail && (subj.result && (subj.result.trim().toUpperCase() === 'F' || subj.result.trim().toLowerCase().includes('fail')));
+                                const gp = showSgpaCgpa ? getGradeAndPoints(subj) : null;
+                                const creditVal = (credits[selectedSem] && credits[selectedSem][code]) ?? '';
+                                const cp = gp && creditVal !== '' ? (parseInt(creditVal) || 0) * gp.points : '';
                                 return (
                                   <TableRow
                                     key={code}
@@ -533,12 +583,62 @@ export default function Dashboard() {
                                     <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>{subj.external}</TableCell>
                                     <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>{subj.total}</TableCell>
                                     <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>{subj.result}</TableCell>
+                                    {showSgpaCgpa && (
+                                      <TableCell sx={isFail ? { color: '#fff' } : {}}>
+                                        <TextField
+                                          type="number"
+                                          size="small"
+                                          value={creditVal}
+                                          onChange={(e) => handleCreditChange(selectedSem, code, e.target.value)}
+                                          sx={{ width: 60, input: { textAlign: 'center', fontSize: 13, p: '4px' } }}
+                                          inputProps={{ min: 0, max: 20 }}
+                                        />
+                                      </TableCell>
+                                    )}
+                                    {showSgpaCgpa && (
+                                      <TableCell sx={{ fontWeight: 600, color: gp?.points === 0 ? '#ef4444' : '#1e40af' }}>
+                                        {gp?.grade}
+                                      </TableCell>
+                                    )}
+                                    {showSgpaCgpa && (
+                                      <TableCell sx={{ fontWeight: 600 }}>{gp?.points}</TableCell>
+                                    )}
+                                    {showSgpaCgpa && (
+                                      <TableCell sx={{ fontWeight: 700 }}>{cp !== '' ? cp : ''}</TableCell>
+                                    )}
                                   </TableRow>
                                 );
                               })}
                           </TableBody>
                         </Table>
                       </TableContainer>
+
+                      {/* SGPA Display */}
+                      {showSgpaCgpa && (() => {
+                        const mainEntries = Object.entries(student.semesters[selectedSem] || {})
+                          .filter(([_, subj]) => !previousAttempts.some(prev => prev.subject_name === subj.subject_name));
+                        const semCreds = credits[selectedSem] || {};
+                        let totalCP = 0, totalCr = 0;
+                        mainEntries.forEach(([code, subj]) => {
+                          const cr = parseInt(semCreds[code]) || 0;
+                          const { points } = getGradeAndPoints(subj);
+                          totalCP += cr * points;
+                          totalCr += cr;
+                        });
+                        const sgpa = totalCr > 0 ? (totalCP / totalCr).toFixed(2) : '—';
+                        return (
+                          <Box sx={{ mt: 2, p: 2, background: '#eff6ff', borderRadius: 2, border: '1px solid #bfdbfe' }}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1e40af' }}>
+                              SGPA (Sem {selectedSem}): {sgpa}
+                            </Typography>
+                            {totalCr === 0 && (
+                              <Typography variant="caption" sx={{ color: '#64748b' }}>
+                                Enter credits for each subject above to calculate SGPA.
+                              </Typography>
+                            )}
+                          </Box>
+                        );
+                      })()}
                     </Box>
                     {/* Previous Attempts Section */}
                     {previousAttempts.length > 0 && (
@@ -598,6 +698,80 @@ export default function Dashboard() {
                         </TableContainer>
                       </Box>
                     )}
+
+                    {/* CGPA Section */}
+                    {showSgpaCgpa && student.semesters && (() => {
+                      const allSems = Object.keys(student.semesters);
+                      let grandTotalCP = 0, grandTotalCr = 0;
+                      const semRows = allSems.map(sem => {
+                        const semCreds = credits[sem] || {};
+                        const entries = Object.entries(student.semesters[sem] || {});
+                        let semCP = 0, semCr = 0;
+                        entries.forEach(([code, subj]) => {
+                          const cr = parseInt(semCreds[code]) || 0;
+                          const { points } = getGradeAndPoints(subj);
+                          semCP += cr * points;
+                          semCr += cr;
+                        });
+                        grandTotalCP += semCP;
+                        grandTotalCr += semCr;
+                        const sgpa = semCr > 0 ? (semCP / semCr).toFixed(2) : '—';
+                        return { sem, semCr, sgpa, semCP };
+                      });
+                      const cgpa = grandTotalCr > 0 ? (grandTotalCP / grandTotalCr).toFixed(2) : '—';
+                      const hasAnyCredits = grandTotalCr > 0;
+                      return (
+                        <Box mt={4}>
+                          <Typography variant="h6" mb={2} sx={{ color: '#1e40af', fontWeight: 700 }}>
+                            CGPA Calculator
+                          </Typography>
+                          {!hasAnyCredits && (
+                            <Typography variant="body2" sx={{ color: '#64748b', mb: 2 }}>
+                              Enter credits in each semester's result table to compute CGPA across all semesters.
+                            </Typography>
+                          )}
+                          <TableContainer component={Paper} sx={{ background: '#ffffff', borderRadius: 3, overflowX: 'auto' }}>
+                            <Table size="small" sx={{
+                              '& th, & td': { borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', fontSize: { xs: 12, sm: 15 }, padding: { xs: '6px 8px', sm: '8px 16px' } },
+                              '& th:last-child, & td:last-child': { borderRight: 0 },
+                            }}>
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell>Semester</TableCell>
+                                  <TableCell>Total Credits</TableCell>
+                                  <TableCell>SGPA</TableCell>
+                                  <TableCell>SGPA × Credits</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {semRows.map(r => (
+                                  <TableRow key={r.sem} hover sx={{
+                                    background: r.sem === selectedSem ? '#eff6ff' : undefined,
+                                    '&:hover': { backgroundColor: 'rgba(30,64,175,0.05)' },
+                                  }}>
+                                    <TableCell sx={{ fontWeight: r.sem === selectedSem ? 700 : 400 }}>Sem {r.sem}</TableCell>
+                                    <TableCell>{r.semCr > 0 ? r.semCr : '—'}</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, color: '#1e40af' }}>{r.sgpa}</TableCell>
+                                    <TableCell>{r.semCr > 0 ? r.semCP : '—'}</TableCell>
+                                  </TableRow>
+                                ))}
+                                <TableRow sx={{ background: '#f0f4f8' }}>
+                                  <TableCell sx={{ fontWeight: 700 }}>Total</TableCell>
+                                  <TableCell sx={{ fontWeight: 700 }}>{grandTotalCr > 0 ? grandTotalCr : '—'}</TableCell>
+                                  <TableCell></TableCell>
+                                  <TableCell sx={{ fontWeight: 700 }}>{grandTotalCr > 0 ? grandTotalCP : '—'}</TableCell>
+                                </TableRow>
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                          <Box sx={{ mt: 2, p: 2, background: '#eff6ff', borderRadius: 2, border: '1px solid #bfdbfe', textAlign: 'center' }}>
+                            <Typography variant="h6" sx={{ fontWeight: 800, color: '#1e40af' }}>
+                              CGPA: {cgpa}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      );
+                    })()}
                   </>
                 );
               })()}

@@ -9,8 +9,8 @@
 html, body {
   min-height: 100vh;
   font-family: 'Inter', sans-serif;
-  background: #15385f;
-  color: #e2e8f0;
+  background: #f0f4f8;
+  color: #1e293b;
 }
 
 #root {

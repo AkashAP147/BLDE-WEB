@@ -334,9 +334,9 @@ export default function Toppers() {
           width: { xs: '99vw', sm: 'auto' },
           mx: 'auto',
           p: { xs: 1, sm: 4 },
-          background: '#0f172a',
-          border: '1px solid rgba(148,163,184,0.15)',
-          boxShadow: '0 8px 32px 0 rgba(36,59,85,0.12)',
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
           borderRadius: 3,
         }}
       >
@@ -346,9 +346,7 @@ export default function Toppers() {
             align="center"
             sx={{
               fontWeight: 800,
-              background: "linear-gradient(to right, #292ce4, #0e85bc)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
+              color: '#1e40af',
               mb: 5,
             }}
           >
@@ -466,16 +464,16 @@ export default function Toppers() {
                       minWidth: 70,
                       fontWeight: 700,
                       borderRadius: 6,
-                      background: semFilter === s ? 'linear-gradient(to right, #4f46e5, #0ea5e9)' : '#e0e7ef',
-                      color: semFilter === s ? '#fff' : '#23272f',
+                      background: semFilter === s ? '#1e40af' : '#f1f5f9',
+                      color: semFilter === s ? '#fff' : '#475569',
                       fontSize: 15,
                       padding: '6px 18px',
                       marginRight: 8,
                       border: 'none',
-                      boxShadow: semFilter === s ? '0 2px 8px #4f46e522' : 'none',
+                      boxShadow: semFilter === s ? '0 2px 8px rgba(30,64,175,0.15)' : 'none',
                       transition: 'all 0.2s',
                       flex: '0 0 auto',
-                      outline: semFilter === s ? '2px solid #0ea5e9' : 'none',
+                      outline: semFilter === s ? '2px solid #1e40af' : 'none',
                       cursor: 'pointer',
                     }}
                   >
@@ -491,7 +489,7 @@ export default function Toppers() {
               <TableContainer
                 component={Paper}
                 sx={{
-                  background: '#1e293b',
+                  background: '#ffffff',
                   borderRadius: 3,
                   width: { xs: 'auto', sm: '100%' },
                   minWidth: { xs: 0, sm: 'auto' },

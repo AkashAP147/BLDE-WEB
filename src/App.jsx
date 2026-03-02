@@ -82,7 +82,7 @@ function App() {
             placeholder="Password"
             style={{ padding: 10, fontSize: 18, borderRadius: 6, border: "1px solid #ccc" }}
           />
-          <button type="submit" style={{ padding: 10, fontSize: 18, borderRadius: 6, background: "#4f46e5", color: "#fff", border: "none", fontWeight: 700 }}>Submit</button>
+          <button type="submit" style={{ padding: 10, fontSize: 18, borderRadius: 6, background: "#1e40af", color: "#fff", border: "none", fontWeight: 700 }}>Submit</button>
           {error && <span style={{ color: "#ef4444" }}>{error}</span>}
         </form>
       </div>
@@ -113,7 +113,7 @@ function App() {
             placeholder="Password"
             style={{ padding: 10, fontSize: 18, borderRadius: 6, border: "1px solid #ccc" }}
           />
-          <button type="submit" style={{ padding: 10, fontSize: 18, borderRadius: 6, background: "#1976d2", color: "#fff", border: "none", fontWeight: 700 }}>Submit</button>
+          <button type="submit" style={{ padding: 10, fontSize: 18, borderRadius: 6, background: "#1e40af", color: "#fff", border: "none", fontWeight: 700 }}>Submit</button>
           {error && <span style={{ color: "#ef4444" }}>{error}</span>}
         </form>
       </div>
@@ -170,8 +170,8 @@ function App() {
             width: '82vw',
             maxWidth: 340,
             height: '100vh',
-            background: '#23272f',
-            boxShadow: '2px 0 16px #0006',
+            background: '#ffffff',
+            boxShadow: '2px 0 16px rgba(0,0,0,0.1)',
             zIndex: 4000,
             display: 'flex',
             flexDirection: 'column',
@@ -185,12 +185,12 @@ function App() {
           }}
         >
           <button aria-label="Close menu" style={{ background: 'none', border: 'none', position: 'absolute', top: 12, left: 12, padding: 0, margin: 0, cursor: 'pointer' }} onClick={() => setMenuOpen(false)}>
-            <CloseIcon sx={{ fontSize: 36, color: '#fff' }} />
+            <CloseIcon sx={{ fontSize: 36, color: '#1e293b' }} />
           </button>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 56 }}>
             <Link to="/" style={{
-              color: window.location.pathname === '/' ? '#fff' : '#cbd5e1',
-              background: window.location.pathname === '/' ? '#2f3b4a' : 'none',
+              color: window.location.pathname === '/' ? '#1e40af' : '#475569',
+              background: window.location.pathname === '/' ? '#eff6ff' : 'none',
               fontSize: 18,
               fontWeight: 700,
               padding: '12px 24px',
@@ -203,8 +203,8 @@ function App() {
               <HomeIcon sx={{ fontSize: 24, opacity: 0.8 }} /> Home
             </Link>
             <Link to="/toppers" style={{
-              color: window.location.pathname === '/toppers' ? '#fff' : '#cbd5e1',
-              background: window.location.pathname === '/toppers' ? '#2f3b4a' : 'none',
+              color: window.location.pathname === '/toppers' ? '#1e40af' : '#475569',
+              background: window.location.pathname === '/toppers' ? '#eff6ff' : 'none',
               fontSize: 18,
               fontWeight: 700,
               padding: '12px 24px',
@@ -217,8 +217,8 @@ function App() {
               <EmojiEventsIcon sx={{ fontSize: 24, opacity: 0.8 }} /> Toppers
             </Link>
             <Link to="/teachers-corner" style={{
-              color: window.location.pathname === '/teachers-corner' ? '#fff' : '#cbd5e1',
-              background: window.location.pathname === '/teachers-corner' ? '#2f3b4a' : 'none',
+              color: window.location.pathname === '/teachers-corner' ? '#1e40af' : '#475569',
+              background: window.location.pathname === '/teachers-corner' ? '#eff6ff' : 'none',
               fontSize: 18,
               fontWeight: 700,
               padding: '12px 24px',
@@ -231,8 +231,8 @@ function App() {
               <SchoolIcon sx={{ fontSize: 24, opacity: 0.8 }} /> Teachers Corner
             </Link>
             <Link to="/students" style={{
-              color: window.location.pathname === '/students' ? '#fff' : '#cbd5e1',
-              background: window.location.pathname === '/students' ? '#2f3b4a' : 'none',
+              color: window.location.pathname === '/students' ? '#1e40af' : '#475569',
+              background: window.location.pathname === '/students' ? '#eff6ff' : 'none',
               fontSize: 18,
               fontWeight: 700,
               padding: '12px 24px',
@@ -245,8 +245,8 @@ function App() {
               <AdminPanelSettingsIcon sx={{ fontSize: 24, opacity: 0.8 }} /> Admin Corner
             </Link>
             <Link to="/about" style={{
-              color: window.location.pathname === '/about' ? '#fff' : '#cbd5e1',
-              background: window.location.pathname === '/about' ? '#2f3b4a' : 'none',
+              color: window.location.pathname === '/about' ? '#1e40af' : '#475569',
+              background: window.location.pathname === '/about' ? '#eff6ff' : 'none',
               fontSize: 18,
               fontWeight: 700,
               padding: '12px 24px',
@@ -292,7 +292,7 @@ function App() {
           color: '#64748b',
           fontSize: 16,
           fontWeight: 600,
-          background: 'transparent',
+          background: 'rgba(255,255,255,0.9)',
           borderTopRightRadius: 12,
           zIndex: 2000,
           transition: 'opacity 0.3s',

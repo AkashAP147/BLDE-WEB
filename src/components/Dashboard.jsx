@@ -228,7 +228,7 @@ export default function Dashboard() {
         minHeight: '100vh',
         py: { xs: 2, sm: 6 },
         px: { xs: 0.5, sm: 0 },
-        background: { xs: '#0f172a', sm: 'none' },
+        background: { xs: '#f0f4f8', sm: 'none' },
       }}
     >
       <Card
@@ -237,9 +237,9 @@ export default function Dashboard() {
           maxWidth: { xs: '100%', sm: 1000 },
           mx: 'auto',
           p: { xs: 1.5, sm: 4 },
-          background: '#0f172a',
-          border: '1px solid rgba(148,163,184,0.15)',
-          boxShadow: { xs: 1, sm: '0 8px 32px 0 rgba(36,59,85,0.12)' },
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          boxShadow: { xs: 1, sm: '0 4px 24px rgba(0,0,0,0.06)' },
           borderRadius: { xs: 2, sm: 3 },
         }}
       >
@@ -250,9 +250,7 @@ export default function Dashboard() {
             align="center"
             sx={{
               fontWeight: 800,
-              background: 'linear-gradient(to right, #292ce4, #0e85bc)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
+              color: '#1e40af',
               mb: { xs: 2, sm: 5 },
               fontSize: { xs: '1.5rem', sm: '2.5rem' },
             }}
@@ -289,7 +287,7 @@ export default function Dashboard() {
                   height: { xs: 38, sm: 56 },
                   fontWeight: 700,
                   fontSize: { xs: 13, sm: 16 },
-                  background: 'linear-gradient(to right, #4f46e5, #0ea5e9)',
+                  background: 'linear-gradient(to right, #1e40af, #0ea5e9)',
                   '&:hover': {
                     transform: 'scale(1.03)',
                   },
@@ -311,7 +309,7 @@ export default function Dashboard() {
           {!student && !error && (
             <Typography
               align="center"
-              sx={{ color: "#94a3b8", mt: 4 }}
+              sx={{ color: "#64748b", mt: 4 }}
             >
               Enter a valid USN to view student details.
             </Typography>
@@ -327,10 +325,10 @@ export default function Dashboard() {
               >
                 {student.name}
               </Typography>
-              <Typography sx={{ color: '#94a3b8', mb: 2, fontSize: { xs: 13, sm: 16 } }}>
+              <Typography sx={{ color: '#64748b', mb: 2, fontSize: { xs: 13, sm: 16 } }}>
                 {student.branch} | Batch {getBatchFromUsn(student)}
               </Typography>
-              <Typography sx={{ color: '#38bdf8', mb: 1, fontSize: { xs: 13, sm: 15 } }}>
+              <Typography sx={{ color: '#1e40af', mb: 1, fontSize: { xs: 13, sm: 15 } }}>
                 USN: {getDisplayUsn(student)}
               </Typography>
 
@@ -361,7 +359,7 @@ export default function Dashboard() {
                         minWidth: { xs: 70, sm: 100 },
                         fontWeight: 700,
                         borderRadius: 2,
-                        background: selectedSem === s ? 'linear-gradient(to right, #4f46e5, #0ea5e9)' : undefined,
+                        background: selectedSem === s ? '#1e40af' : undefined,
                         fontSize: { xs: 12, sm: 16 },
                         px: { xs: 0.5, sm: 2 },
                         py: { xs: 0.2, sm: 1 },
@@ -441,7 +439,7 @@ export default function Dashboard() {
                       <Box mb={2}>
                         <Button
                           variant={highlightFail ? 'contained' : 'outlined'}
-                          sx={{ background: highlightFail ? 'linear-gradient(to right, #4f46e5, #0ea5e9)' : undefined, fontWeight: 700, borderRadius: 2 }}
+                          sx={{ background: highlightFail ? '#1e40af' : undefined, fontWeight: 700, borderRadius: 2 }}
                           onClick={() => setHighlightFail(v => !v)}
                         >
                           {highlightFail ? 'Hide' : 'Show'} Failed Subject Highlight
@@ -459,32 +457,36 @@ export default function Dashboard() {
                           })
                           .map(([_, subj]) => subj);
                         const totalMarks = mainSubjects.reduce((sum, subj) => sum + (parseInt(subj.total) || 0), 0);
-                        const maxMarks = mainSubjects.length * 100; // Assuming each subject is out of 100
+                        // Account for subjects with max marks of 200 (e.g., projects)
+                        const maxMarks = mainSubjects.reduce((sum, subj) => {
+                          const marks = parseInt(subj.total) || 0;
+                          return sum + (marks > 100 ? 200 : 100);
+                        }, 0);
                         const percent = maxMarks > 0 ? ((totalMarks / maxMarks) * 100).toFixed(2) : "0.00";
                         return (
-                          <Typography variant="subtitle1" sx={{ color: '#38bdf8', fontWeight: 700, mb: 2 }}>
+                          <Typography variant="subtitle1" sx={{ color: '#1e40af', fontWeight: 700, mb: 2 }}>
                             Percentage: {percent}%
                           </Typography>
                         );
                       })()}
 
                       <TableContainer
-                        component={Paper}
-                        sx={{
-                          background: '#1e293b',
-                          borderRadius: 3,
-                          width: '100%',
-                          overflowX: 'auto',
-                        }}
-                      >
+                          component={Paper}
+                          sx={{
+                            background: '#ffffff',
+                            borderRadius: 3,
+                            width: '100%',
+                            overflowX: 'auto',
+                          }}
+                        >
                         <Table
                           size="small"
                           sx={{
                             minWidth: 400,
                             width: '100%',
                             '& th, & td': {
-                              borderRight: '1px solid #334155',
-                              borderBottom: '1px solid #334155',
+                              borderRight: '1px solid #e2e8f0',
+                              borderBottom: '1px solid #e2e8f0',
                               fontSize: { xs: 11, sm: 15 },
                               padding: { xs: '5px 2px', sm: '8px 12px' },
                               wordBreak: 'break-word',
@@ -522,7 +524,7 @@ export default function Dashboard() {
                                     sx={{
                                       ...(isFail ? { backgroundColor: '#ef4444' } : {}),
                                       '&:hover': {
-                                        backgroundColor: isFail ? '#dc2626' : 'rgba(99,102,241,0.08)',
+                                          backgroundColor: isFail ? '#dc2626' : 'rgba(30,64,175,0.05)',
                                       },
                                     }}
                                   >
@@ -541,13 +543,13 @@ export default function Dashboard() {
                     {/* Previous Attempts Section */}
                     {previousAttempts.length > 0 && (
                       <Box mt={6}>
-                        <Typography variant="h6" mb={2} sx={{ color: '#f59e42' }}>
+                        <Typography variant="h6" mb={2} sx={{ color: '#e65100' }}>
                           Previous Attempts for Repeated Subjects
                         </Typography>
                         <TableContainer
                           component={Paper}
                           sx={{
-                            background: '#1e293b',
+                            background: '#ffffff',
                             borderRadius: 3,
                             width: '100%',
                             overflowX: 'auto',
@@ -559,8 +561,8 @@ export default function Dashboard() {
                               minWidth: 400,
                               width: '100%',
                               '& th, & td': {
-                                borderRight: '1px solid #334155',
-                                borderBottom: '1px solid #334155',
+                                borderRight: '1px solid #e2e8f0',
+                                borderBottom: '1px solid #e2e8f0',
                                 fontSize: { xs: 11, sm: 15 },
                                 padding: { xs: '5px 2px', sm: '8px 12px' },
                                 wordBreak: 'break-word',
@@ -606,7 +608,7 @@ export default function Dashboard() {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 8 }}>
               <Button
                 variant="contained"
-                sx={{ minWidth: 56, minHeight: 56, background: 'linear-gradient(to right, #4f46e5, #0ea5e9)', color: '#fff', fontSize: 32, fontWeight: 700, boxShadow: 2, visibility: currentIndex > 0 ? 'visible' : 'hidden', borderRadius: 2 }}
+                sx={{ minWidth: 56, minHeight: 56, background: '#1e40af', color: '#fff', fontSize: 32, fontWeight: 700, boxShadow: 2, visibility: currentIndex > 0 ? 'visible' : 'hidden', borderRadius: 2 }}
                 onClick={() => {
                   if (currentIndex > 0) {
                     const prevUsn = usnList[currentIndex - 1];
@@ -628,7 +630,7 @@ export default function Dashboard() {
               <Box sx={{ flex: 1 }} />
               <Button
                 variant="contained"
-                sx={{ minWidth: 56, minHeight: 56, background: 'linear-gradient(to right, #4f46e5, #0ea5e9)', color: '#fff', fontSize: 32, fontWeight: 700, boxShadow: 2, visibility: currentIndex < usnList.length - 1 ? 'visible' : 'hidden', borderRadius: 2 }}
+                sx={{ minWidth: 56, minHeight: 56, background: '#1e40af', color: '#fff', fontSize: 32, fontWeight: 700, boxShadow: 2, visibility: currentIndex < usnList.length - 1 ? 'visible' : 'hidden', borderRadius: 2 }}
                 onClick={() => {
                   if (currentIndex < usnList.length - 1) {
                     const nextUsn = usnList[currentIndex + 1];

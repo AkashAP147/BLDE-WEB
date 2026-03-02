@@ -347,8 +347,8 @@ export default function AllStudents() {
   if (loading) {
     return (
       <Box p={2} display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="60vh">
-        <CircularProgress size={60} thickness={5} sx={{ color: '#4f46e5', mb: 3 }} />
-        <Typography variant="h6" sx={{ color: '#4f46e5', mt: 2 }}>
+        <CircularProgress size={60} thickness={5} sx={{ color: '#1e40af', mb: 3 }} />
+        <Typography variant="h6" sx={{ color: '#1e40af', mt: 2 }}>
           Loading students...
         </Typography>
       </Box>
@@ -357,9 +357,9 @@ export default function AllStudents() {
 
   return (
     <Box p={2}>
-      <Card sx={{ maxWidth: 1200, margin: '32px auto', borderRadius: 6, boxShadow: '0 6px 32px 0 #b2ebf299', background: 'rgba(255,255,255,0.95)' }}>
+      <Card sx={{ maxWidth: 1200, margin: '32px auto', borderRadius: 6, boxShadow: '0 4px 24px rgba(0,0,0,0.06)', background: '#ffffff' }}>
         <CardContent>
-          <Typography variant="h3" gutterBottom sx={{ color: '#4f46e5', fontWeight: 900, letterSpacing: '-2px', mb: 2, textAlign: 'center' }}>
+          <Typography variant="h3" gutterBottom sx={{ color: '#1e40af', fontWeight: 900, letterSpacing: '-2px', mb: 2, textAlign: 'center' }}>
             Admin Corner
           </Typography>
           {/* Admin Stats Feature Button */}
@@ -444,11 +444,11 @@ export default function AllStudents() {
           </Grid>
           {/* Student count for current filters */}
           <Box mb={2} display="flex" justifyContent="flex-end">
-            <Typography variant="subtitle1" sx={{ color: '#0ea5e9', fontWeight: 700 }}>
+            <Typography variant="subtitle1" sx={{ color: '#1e40af', fontWeight: 700 }}>
               Students found: {filtered.length}
             </Typography>
           </Box>
-          <TableContainer component={Paper} sx={{ borderRadius: 4, boxShadow: '0 2px 12px 0 #b2ebf266' }}>
+          <TableContainer component={Paper} sx={{ borderRadius: 4, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -465,7 +465,7 @@ export default function AllStudents() {
                   <TableRow>
                     <TableCell colSpan={6} align="center" style={{ color: '#64748b', fontSize: '1.1rem', padding: '32px 0' }}>
                       <div>No students found for the selected filters.</div>
-                      <div style={{ color: '#b2ebf2', fontSize: '1.5rem', marginTop: 8 }}>Try changing your filter or check your database.</div>
+                      <div style={{ color: '#94a3b8', fontSize: '1.5rem', marginTop: 8 }}>Try changing your filter or check your database.</div>
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -478,7 +478,7 @@ export default function AllStudents() {
                       <TableCell>{s.semesters ? Object.keys(s.semesters).join(", ") : "-"}</TableCell>
                       <TableCell>
                         <button
-                          style={{ padding: '4px 12px', borderRadius: 6, background: '#0ea5e9', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}
+                          style={{ padding: '4px 12px', borderRadius: 6, background: '#1e40af', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}
                           onClick={() => navigate(`/?usn=${encodeURIComponent(s.usn)}`)}
                         >
                           View Result

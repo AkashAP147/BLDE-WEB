@@ -1,3 +1,54 @@
+// Helper to get marks/result based on revalMode
+function getSubjectMarks(subj, revalMode) {
+  // User's structure: rv_marks, rv_result, old_marks, old_result, final_marks, final_result
+  if (revalMode === 'after') {
+    // Prefer rv_marks/rv_result, fallback to final_marks/final_result, else old_marks/old_result
+    if (subj.rv_marks !== undefined && subj.rv_marks !== null && subj.rv_marks !== "") {
+      return {
+        marks: Number(subj.rv_marks),
+        result: subj.rv_result || subj.final_result || subj.result,
+      };
+    }
+    if (subj.final_marks !== undefined && subj.final_marks !== null && subj.final_marks !== "") {
+      return {
+        marks: Number(subj.final_marks),
+        result: subj.final_result || subj.result,
+      };
+    }
+    // fallback to old if nothing else
+    if (subj.old_marks !== undefined && subj.old_marks !== null && subj.old_marks !== "") {
+      return {
+        marks: Number(subj.old_marks),
+        result: subj.old_result || subj.result,
+      };
+    }
+  } else {
+    // Before reval: prefer old_marks/old_result, fallback to final_marks/final_result, else rv_marks/rv_result
+    if (subj.old_marks !== undefined && subj.old_marks !== null && subj.old_marks !== "") {
+      return {
+        marks: Number(subj.old_marks),
+        result: subj.old_result || subj.result,
+      };
+    }
+    if (subj.final_marks !== undefined && subj.final_marks !== null && subj.final_marks !== "") {
+      return {
+        marks: Number(subj.final_marks),
+        result: subj.final_result || subj.result,
+      };
+    }
+    if (subj.rv_marks !== undefined && subj.rv_marks !== null && subj.rv_marks !== "") {
+      return {
+        marks: Number(subj.rv_marks),
+        result: subj.rv_result || subj.result,
+      };
+    }
+  }
+  // fallback: try total/result or 0
+  return {
+    marks: Number(subj.total) || 0,
+    result: subj.result,
+  };
+}
 import React, { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { Box, Typography, FormControl, InputLabel, Select, MenuItem, Card } from "@mui/material";
@@ -6,9 +57,12 @@ import { Chart, ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearSc
 Chart.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 import { db } from "../firebase";
 import { ref, onValue } from "firebase/database";
+import { normalizeStudents } from "../normalizeStudents";
 import jsPDF from "jspdf";
 
 const TeachersCorner = () => {
+    // Toggle for before/after reval
+    const [revalMode, setRevalMode] = useState('after'); // 'before' or 'after'
   // Chart refs for PDF export
   const pieChartRef = useRef(null);
   const barChartRef = useRef(null);
@@ -18,6 +72,14 @@ const TeachersCorner = () => {
   // Export filtered results to Excel (now inside component for state access)
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [highlightFail, setHighlightFail] = useState(false);
+
+  // PDF chart export selection dialog state
+  const [showPdfExportDialog, setShowPdfExportDialog] = useState(false);
+  const [pdfChartSelections, setPdfChartSelections] = useState({
+    pie: true,
+    bar: true,
+    dept: false,
+  });
 
   const handleExportExcel = (highlight = false) => {
     const semKey = String(sem);
@@ -44,7 +106,7 @@ const TeachersCorner = () => {
             if (semNum !== semKey && parseInt(semNum) < parseInt(semKey)) {
               Object.entries(subjects || {}).forEach(([codePrev, subjPrev]) => {
                 const res = (subjPrev.result || '').trim().toLowerCase();
-                if ((res === 'f' || res.includes('fail')) && codePrev === code) {
+                if ((res === 'f' || res.includes('fail') || res === 'a' || res === 'x' || res === 'ne') && codePrev === code) {
                   isBacklog = true;
                 }
               });
@@ -72,53 +134,48 @@ const TeachersCorner = () => {
     if (parseInt(semKey) > 1) {
       let srNo = 1;
       filtered.forEach((s) => {
-        let failedPrev = [];
-        Object.entries(s.semesters || {}).forEach(([semNum, subjects]) => {
-          if (semNum !== semKey && parseInt(semNum) < parseInt(semKey)) {
-            Object.entries(subjects || {}).forEach(([subjKey, subj]) => {
-              const res = (subj.result || '').trim().toLowerCase();
-              if (res === 'f' || res.includes('fail')) {
-                let code = subj.subject_code || subjKey || '';
-                failedPrev.push({
-                  code,
-                  name: subj.subject_name || '',
-                  sem: semNum,
-                  marks: subj.total || '',
-                });
-                if (!backlogSubjectMap[code]) {
-                  backlogSubjectMap[code] = {
-                    code,
-                    short: code,
-                    long: subj.subject_name,
-                  };
-                }
-              }
-            });
+        // Find backlog subjects: codes in current sem that are NOT main subjects (i.e., they appeared as failures in a previous sem)
+        const currentSemSubjects = s.semesters[semKey] || {};
+        const backlogEntries = [];
+        Object.entries(currentSemSubjects).forEach(([code, subj]) => {
+          if (presentSubjectCodes.has(code)) return; // skip main subjects
+          // This is a backlog subject — only show current sem result
+          backlogEntries.push({
+            code,
+            name: subj.subject_name || '',
+            currentMarks: subj.total || '',
+            currentResult: subj.result || '',
+          });
+          if (!backlogSubjectMap[code]) {
+            backlogSubjectMap[code] = {
+              code,
+              short: code,
+              long: subj.subject_name,
+            };
           }
         });
-        if (failedPrev.length > 0) {
-          failedPrev.forEach((f, idx) => {
+        if (backlogEntries.length > 0) {
+          backlogEntries.forEach((f, idx) => {
             backlogRows.push({
               'Sr.No': idx === 0 ? srNo : '',
               'Name': idx === 0 ? s.name : '',
               'USN': idx === 0 ? s.usn : '',
               'Branch': idx === 0 ? s.branch : '',
               'Batch': idx === 0 ? s.batch : '',
-              'Total Backlogs': idx === 0 ? failedPrev.length : '',
+              'Total Backlogs': idx === 0 ? backlogEntries.length : '',
               'Subject Code': f.code,
               'Subject Name': f.name,
-              'Failed in Sem': f.sem,
-              'Marks': f.marks,
+              [`Sem ${semKey} Marks`]: f.currentMarks,
+              [`Sem ${semKey} Result`]: f.currentResult,
             });
           });
           srNo++;
         }
       });
     }
-    // Main results
+    // Main results — only include main subjects (not backlog from previous semesters)
     filtered.forEach((s) => {
       const semSubjects = s.semesters[semKey] || {};
-      // Ensure USN is always present, fallback to key if missing
       const usnValue = s.usn || (s.USN ? s.USN : "");
       const row = {
         Name: s.name,
@@ -129,45 +186,142 @@ const TeachersCorner = () => {
       };
       let totalMarks = 0;
       let maxMarksSum = 0;
-      let subjectCount = 0;
-      // Only include subjects this student actually has in this semester
+      // Only include main subjects (present in presentSubjectCodes), skip backlog columns
       Object.entries(semSubjects).forEach(([code, subj]) => {
-        // Always show marks for each subject (including backlog), using latest available attempt
-        let latestMarks = '';
-        let found = false;
-        // Search from highest semester to lowest for latest attempt
-        const semKeys = Object.keys(s.semesters || {}).sort((a, b) => parseInt(b) - parseInt(a));
-        for (let i = 0; i < semKeys.length; ++i) {
-          const semNum = semKeys[i];
-          const subjects = s.semesters[semNum] || {};
-          const subjFound = subjects[code];
-          if (subjFound && subjFound.total !== undefined && subjFound.total !== null && subjFound.total !== "") {
-            latestMarks = subjFound.total;
-            found = true;
-            // Only count towards totalMarks/subjectCount if in current semester
-            if (semNum === semKey) {
-              totalMarks += Number(subjFound.total);
-              // Determine max marks for this subject: if total > 100, it's a 200-mark subject
-              const subjMaxMarks = Number(subjFound.total) > 100 ? 200 : 100;
-              maxMarksSum += subjMaxMarks;
-              subjectCount++;
-            }
-            break;
+        if (!presentSubjectCodes.has(code)) return; // skip backlog subjects
+        // Use the same logic as marks sheet for total: internal + rv_marks/old_marks/external
+        let internal = subj.internal !== undefined ? subj.internal : (subj.internal_marks !== undefined ? subj.internal_marks : '');
+        let external = '';
+        let total = '';
+        if (revalMode === 'after') {
+          external = subj.rv_marks !== undefined && subj.rv_marks !== '' ? subj.rv_marks : (subj.external !== undefined ? subj.external : (subj.external_marks !== undefined ? subj.external_marks : ''));
+          if (subj.rv_marks !== undefined && subj.rv_marks !== '') {
+            total = (Number(internal || 0) + Number(subj.rv_marks || 0)).toString();
+          } else {
+            total = (Number(internal || 0) + Number(external || 0)).toString();
+          }
+        } else {
+          external = subj.old_marks !== undefined && subj.old_marks !== '' ? subj.old_marks : (subj.external !== undefined ? subj.external : (subj.external_marks !== undefined ? subj.external_marks : ''));
+          if (subj.old_marks !== undefined && subj.old_marks !== '') {
+            total = (Number(internal || 0) + Number(subj.old_marks || 0)).toString();
+          } else {
+            total = (Number(internal || 0) + Number(external || 0)).toString();
           }
         }
-        row[code] = found ? latestMarks : 'NA';
+        row[code] = total;
+        const marks = Number(total);
+        if (!isNaN(marks) && total !== '' && total !== null && total !== undefined) {
+          totalMarks += marks;
+          const subjMaxMarks = marks > 100 ? 200 : 100;
+          maxMarksSum += subjMaxMarks;
+        }
       });
+      // Failed subjects — only consider main subjects
       const failedSubjects = Object.entries(semSubjects)
         .filter(([code, subj]) => {
-          const res = (subj.result || '').trim().toLowerCase();
-          return res === 'f' || res.includes('fail');
+          if (!presentSubjectCodes.has(code)) return false;
+          const { result } = getSubjectMarks(subj, revalMode);
+          const res = (result || '').trim().toLowerCase();
+          return res === 'f' || res.includes('fail') || res === 'a' || res === 'x' || res === 'ne';
         })
-        .map(([code, subj]) => code);
+        .map(([code]) => code);
       row['Result'] = failedSubjects.length > 0 ? 'Fail' : 'Pass';
       row['Percentage'] = maxMarksSum > 0 ? ((totalMarks / maxMarksSum) * 100).toFixed(2) : '';
       row['Failed Subjects'] = failedSubjects.join(', ');
       rows.push(row);
     });
+    // === New: Sheet with internal, external, and total marks for each subject (formatted with subject code as header, then Internal/External/Total below) ===
+    const marksSheetAoa = [];
+    // First header row: Name, USN, Branch, Batch, then subject name + code (merged for 3 columns each), then Result, Percentage
+    const firstHeader = ['Name', 'USN', 'Branch', 'Batch'];
+    subjectList.forEach(code => {
+      const subjName = (subjectMap[code] && subjectMap[code].long) ? subjectMap[code].long : '';
+      firstHeader.push(`${subjName} (${code})`, '', '');
+    });
+    firstHeader.push('Result', 'Percentage');
+    marksSheetAoa.push(firstHeader);
+    // Second header row: '', '', '', '', Internal, External, Total, ..., '', ''
+    const secondHeader = ['', '', '', ''];
+    subjectList.forEach(() => {
+      secondHeader.push('Internal', 'External', 'Total');
+    });
+    secondHeader.push('', '');
+    marksSheetAoa.push(secondHeader);
+    // Data rows
+    filtered.forEach(s => {
+      const semSubjects = s.semesters[semKey] || {};
+      const row = [s.name, s.usn || s.USN || '', s.branch, s.batch];
+      let totalMarks = 0;
+      let maxMarksSum = 0;
+      let failedSubjects = [];
+      subjectList.forEach(code => {
+        const subj = semSubjects[code] || {};
+        let internal = subj.internal !== undefined ? subj.internal : (subj.internal_marks !== undefined ? subj.internal_marks : '');
+        let external = '';
+        let total = '';
+        let isFail = false;
+        if (revalMode === 'after') {
+          external = subj.rv_marks !== undefined && subj.rv_marks !== '' ? subj.rv_marks : (subj.external !== undefined ? subj.external : (subj.external_marks !== undefined ? subj.external_marks : ''));
+          if (subj.rv_marks !== undefined && subj.rv_marks !== '') {
+            total = (Number(internal || 0) + Number(subj.rv_marks || 0)).toString();
+          } else {
+            total = (Number(internal || 0) + Number(external || 0)).toString();
+          }
+          // Use result field for fail
+          const res = (subj.rv_result || subj.final_result || subj.result || '').trim().toLowerCase();
+          if (res === 'f' || res.includes('fail') || res === 'a' || res === 'x' || res === 'ne') isFail = true;
+        } else {
+          external = subj.old_marks !== undefined && subj.old_marks !== '' ? subj.old_marks : (subj.external !== undefined ? subj.external : (subj.external_marks !== undefined ? subj.external_marks : ''));
+          if (subj.old_marks !== undefined && subj.old_marks !== '') {
+            total = (Number(internal || 0) + Number(subj.old_marks || 0)).toString();
+          } else {
+            total = (Number(internal || 0) + Number(external || 0)).toString();
+          }
+          // If internal > 50, do not consider external for fail
+          let intNum = Number(internal);
+          let extNum = Number(subj.old_marks !== undefined && subj.old_marks !== '' ? subj.old_marks : external);
+          if (isNaN(intNum)) intNum = 0;
+          if (isNaN(extNum)) extNum = 0;
+          const res = (subj.old_result || subj.result || '').trim().toLowerCase();
+          if (intNum > 50) {
+            if (res === 'f' || res.includes('fail') || res === 'a' || res === 'x' || res === 'ne') isFail = true;
+          } else {
+            if (res === 'f' || res.includes('fail') || res === 'a' || res === 'x' || res === 'ne' || extNum < 18) isFail = true;
+          }
+        }
+        row.push(internal);
+        row.push(external);
+        row.push(total);
+        // For result/percentage
+        const marks = Number(total);
+        if (!isNaN(marks) && total !== '' && total !== null && total !== undefined) {
+          totalMarks += marks;
+          const subjMaxMarks = marks > 100 ? 200 : 100;
+          maxMarksSum += subjMaxMarks;
+        }
+        if (isFail) failedSubjects.push(code);
+      });
+      // Result: Fail if any failed subject, else Pass
+      row.push(failedSubjects.length > 0 ? 'Fail' : 'Pass');
+      // Percentage
+      row.push(maxMarksSum > 0 ? ((totalMarks / maxMarksSum) * 100).toFixed(2) : '');
+      marksSheetAoa.push(row);
+    });
+    const wsMarks = XLSX.utils.aoa_to_sheet(marksSheetAoa);
+    // Center align subject headers (first and second row for subject columns)
+    const startCol = 4; // first 4 columns are Name, USN, Branch, Batch
+    for (let i = 0; i < subjectList.length; ++i) {
+      const colBase = startCol + i * 3;
+      // First header row (subject name + code)
+      if (!wsMarks['!merges']) wsMarks['!merges'] = [];
+      wsMarks['!merges'].push({ s: { r: 0, c: colBase }, e: { r: 0, c: colBase + 2 } });
+      for (let c = colBase; c <= colBase + 2; ++c) {
+        const cell1 = wsMarks[XLSX.utils.encode_cell({ r: 0, c })];
+        if (cell1) cell1.s = { alignment: { horizontal: 'center', vertical: 'center' }, font: { bold: true } };
+        const cell2 = wsMarks[XLSX.utils.encode_cell({ r: 1, c })];
+        if (cell2) cell2.s = { alignment: { horizontal: 'center', vertical: 'center' } };
+      }
+    }
     // Create worksheet (workbook created later to control sheet order)
     const ws = XLSX.utils.json_to_sheet(rows);
     // Add backlog sheet only if there are failed students in previous sems
@@ -185,8 +339,8 @@ const TeachersCorner = () => {
         { wch: 14 }, // Total Backlogs
         { wch: 16 }, // Subject Code
         { wch: 40 }, // Subject Name
-        { wch: 14 }, // Failed in Sem
-        { wch: 8 },  // Marks
+        { wch: 14 }, // Current Sem Marks
+        { wch: 14 }, // Current Sem Result
       ];
     }
     // Add reference sheet for subject codes (with subject code column)
@@ -213,7 +367,7 @@ const TeachersCorner = () => {
       collegeName = (found && found.name) ? found.name : college;
     }
 
-    // Compute overall summary stats
+    // Compute overall summary stats (only for main subjects, excluding backlog)
     let totalStudentsCount = filtered.length;
     let fcdCount = 0, fcCount = 0, scCount = 0, failCount = 0, passCount = 0;
     const studentPercentages = [];
@@ -234,16 +388,17 @@ const TeachersCorner = () => {
     });
     filtered.forEach(s => {
       const semSubjects = s.semesters[semKey] || {};
-      const subjects = Object.entries(semSubjects);
+      // Only consider main subjects (not backlog) for overall stats
+      const subjects = Object.entries(semSubjects).filter(([code]) => presentSubjectCodes.has(code));
       let totalM = 0, maxMarksSum = 0, hasFail = false;
       subjects.forEach(([code, subj]) => {
-        const marks = Number(subj.total);
-        if (!isNaN(marks) && subj.total !== '' && subj.total !== null && subj.total !== undefined) {
+        const { marks, result } = getSubjectMarks(subj, revalMode);
+        if (!isNaN(marks) && marks !== '' && marks !== null && marks !== undefined) {
           totalM += marks;
           maxMarksSum += (subjectMaxMarksMap[code] || 100);
         }
-        const res = (subj.result || '').trim().toLowerCase();
-        if (res === 'f' || res.includes('fail')) hasFail = true;
+        const res = (result || '').trim().toLowerCase();
+        if (res === 'f' || res.includes('fail') || res === 'a' || res === 'x' || res === 'ne') hasFail = true;
       });
       const pct = maxMarksSum > 0 ? (totalM / maxMarksSum) * 100 : 0;
       studentPercentages.push({ name: s.name, usn: s.usn, pct, hasFail });
@@ -258,19 +413,21 @@ const TeachersCorner = () => {
     });
     const overallPassPct = totalStudentsCount > 0 ? ((passCount / totalStudentsCount) * 100).toFixed(2) : 0;
 
-    // Compute subject-wise stats (use subjectMaxMarksMap for percentage-based FCD/FC/SC)
+    // Compute subject-wise stats for MAIN subjects only (use subjectMaxMarksMap for percentage-based FCD/FC/SC)
     const subjStats = {};
     filtered.forEach(s => {
       const semSubjects = s.semesters[semKey] || {};
       Object.entries(semSubjects).forEach(([code, subj]) => {
+        // Only include main subjects (not backlog from previous semesters)
+        if (!presentSubjectCodes.has(code)) return;
         if (!subjStats[code]) {
           subjStats[code] = { name: subj.subject_name || code, total: 0, fcd: 0, fc: 0, sc: 0, failed: 0, passed: 0, maxMarks: subjectMaxMarksMap[code] || 100 };
         }
         subjStats[code].total++;
-        const marks = Number(subj.total);
+        const { marks, result } = getSubjectMarks(subj, revalMode);
         const maxM = subjectMaxMarksMap[code] || 100;
-        const res = (subj.result || '').trim().toLowerCase();
-        if (res === 'f' || res.includes('fail')) {
+        const res = (result || '').trim().toLowerCase();
+        if (res === 'f' || res.includes('fail') || res === 'a' || res === 'x' || res === 'ne') {
           subjStats[code].failed++;
         } else {
           subjStats[code].passed++;
@@ -280,6 +437,34 @@ const TeachersCorner = () => {
             if (pct >= 70) subjStats[code].fcd++;
             else if (pct >= 60) subjStats[code].fc++;
             else if (pct >= 50) subjStats[code].sc++;
+          }
+        }
+      });
+    });
+
+    // Compute subject-wise stats for BACKLOG (previous sem) subjects separately
+    const backlogSubjStats = {};
+    filtered.forEach(s => {
+      const semSubjects = s.semesters[semKey] || {};
+      Object.entries(semSubjects).forEach(([code, subj]) => {
+        // Only include backlog subjects (not main subjects)
+        if (presentSubjectCodes.has(code)) return;
+        if (!backlogSubjStats[code]) {
+          backlogSubjStats[code] = { name: subj.subject_name || code, total: 0, fcd: 0, fc: 0, sc: 0, failed: 0, passed: 0, maxMarks: subjectMaxMarksMap[code] || 100 };
+        }
+        backlogSubjStats[code].total++;
+        const marks = Number(subj.total);
+        const maxM = subjectMaxMarksMap[code] || 100;
+        const res = (subj.result || '').trim().toLowerCase();
+        if (res === 'f' || res.includes('fail') || res === 'a' || res === 'x' || res === 'ne') {
+          backlogSubjStats[code].failed++;
+        } else {
+          backlogSubjStats[code].passed++;
+          if (!isNaN(marks)) {
+            const pct = (marks / maxM) * 100;
+            if (pct >= 70) backlogSubjStats[code].fcd++;
+            else if (pct >= 60) backlogSubjStats[code].fc++;
+            else if (pct >= 50) backlogSubjStats[code].sc++;
           }
         }
       });
@@ -328,12 +513,37 @@ const TeachersCorner = () => {
     wsAnalysis['!cols'] = [
       { wch: 8 }, { wch: 16 }, { wch: 40 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }
     ];
-    // Create workbook and append sheets in desired order: Result Analysis, Results, Backlog, Reference
+
+    // === Previous Sem Subject Analysis Sheet (for backlog subjects) ===
+    let wsPrevSemAnalysis = null;
+    if (Object.keys(backlogSubjStats).length > 0) {
+      const prevSemAoa = [];
+      prevSemAoa.push([collegeName]);
+      prevSemAoa.push(['PREVIOUS SEMESTER SUBJECT ANALYSIS']);
+      prevSemAoa.push([`Students appearing in Semester ${semKey} with backlog subjects`, '', '', `${branch || 'All Branches'}`, '', `Batch: ${batch || 'All'}`]);
+      prevSemAoa.push([]);
+      prevSemAoa.push(['Sr.No', 'Subject Code', 'Subject Name', 'Total Students', 'Total FCD', 'Total FC', 'Total SC', 'Total Failed', 'Total Passed', 'Passing %']);
+      let prevSrNo = 1;
+      Object.entries(backlogSubjStats).forEach(([code, stats]) => {
+        const passPct = stats.total > 0 ? ((stats.passed / stats.total) * 100).toFixed(2) : '0';
+        prevSemAoa.push([prevSrNo++, code, stats.name, stats.total, stats.fcd, stats.fc, stats.sc, stats.failed, stats.passed, passPct + '%']);
+      });
+      wsPrevSemAnalysis = XLSX.utils.aoa_to_sheet(prevSemAoa);
+      wsPrevSemAnalysis['!cols'] = [
+        { wch: 8 }, { wch: 16 }, { wch: 40 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }
+      ];
+    }
+
+    // Create workbook and append sheets in desired order: Result Analysis, Results, Marks Sheet, Backlog, Prev Sem Analysis, Reference
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, wsAnalysis, "Result Analysis");
     XLSX.utils.book_append_sheet(wb, ws, "Results");
+    XLSX.utils.book_append_sheet(wb, wsMarks, "Marks Sheet");
     if (wsBacklog) {
       XLSX.utils.book_append_sheet(wb, wsBacklog, "Backlog Subjects");
+    }
+    if (wsPrevSemAnalysis) {
+      XLSX.utils.book_append_sheet(wb, wsPrevSemAnalysis, "Prev Sem Analysis");
     }
     XLSX.utils.book_append_sheet(wb, wsRef, "Subject Reference");
 
@@ -554,7 +764,7 @@ const TeachersCorner = () => {
     // Fetch all students data
     const studentsRef = ref(db, "students");
     onValue(studentsRef, (snapshot) => {
-      const val = snapshot.val() || {};
+      const val = normalizeStudents(snapshot.val() || {});
       // Map each student object to include USN from the key if missing, and add collegeCode
       const arr = Object.entries(val).map(([usn, s]) => {
         const collegeCode = usn && usn.length >= 3 ? usn.substring(0, 3).toUpperCase() : "";
@@ -589,7 +799,7 @@ const TeachersCorner = () => {
   }, [college]);
 
   useEffect(() => {
-    // Calculate pass/fail for selected sem, branch, batch, college
+    // Calculate pass/fail for selected sem, branch, batch, college, and revalMode
     const semKey = String(sem);
     const filtered = data.filter(
       (s) =>
@@ -626,9 +836,10 @@ const TeachersCorner = () => {
         })
         .map(([_, subj]) => subj);
       if (mainSubjects.length > 0) {
-        // Match Dashboard logic: fail if any subject is F or contains 'fail' (case-insensitive)
+        // Use revalMode for result
         const hasFail = mainSubjects.some(subj => {
-          const res = (subj.result || '').trim().toLowerCase();
+          const { result } = getSubjectMarks(subj, revalMode);
+          const res = (result || '').trim().toLowerCase();
           return res === 'f' || res.includes('fail');
         });
         if (hasFail) {
@@ -639,7 +850,7 @@ const TeachersCorner = () => {
       }
     });
     setPassFailStats({ pass, fail });
-  }, [sem, branch, batch, college, data]);
+  }, [sem, branch, batch, college, data, revalMode]);
 
   const pieData = {
     labels: ["Pass", "Fail"],
@@ -659,7 +870,6 @@ const TeachersCorner = () => {
   let subjectCodeMap = {};
   {
     const semKey = String(sem);
-    // FIX: Add college filter here
     const filtered = data.filter(
       (s) =>
         (!college || s.collegeCode === college) &&
@@ -710,7 +920,8 @@ const TeachersCorner = () => {
       filtered.forEach(s => {
         const mainSubj = Object.values(s.semesters[semKey] || {}).find(subj => subj.subject_name === name);
         if (mainSubj) {
-          const res = (mainSubj.result || '').trim().toLowerCase();
+          const { result } = getSubjectMarks(mainSubj, revalMode);
+          const res = (result || '').trim().toLowerCase();
           if (res === 'f' || res.includes('fail')) fail++;
           else if (res) pass++;
         }
@@ -734,8 +945,8 @@ const TeachersCorner = () => {
     };
   }
 
-  // Export all charts to PDF (renders charts off-screen so all are captured)
-  const handleExportChartsPDF = async () => {
+  // Export selected charts to PDF (renders charts off-screen so all are captured)
+  const handleExportChartsPDF = async (selections) => {
     setExportingPdf(true);
     try {
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
@@ -760,14 +971,18 @@ const TeachersCorner = () => {
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = width;
           tempCanvas.height = height;
-          const tempChart = new Chart(tempCanvas.getContext('2d'), {
+          // Fill white background (prevents transparency turning black)
+          const ctx = tempCanvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          const tempChart = new Chart(ctx, {
             type,
             data: JSON.parse(JSON.stringify(chartData)),
             options: {
               ...chartOptions,
               responsive: false,
               animation: false,
-              devicePixelRatio: 2,
+              devicePixelRatio: 1,
             },
             plugins: chartPlugins,
           });
@@ -796,30 +1011,37 @@ const TeachersCorner = () => {
         const imgW = canvasW * ratio;
         const imgH = canvasH * ratio;
         const x = (pageW - imgW) / 2;
-        pdf.addImage(imgData, 'PNG', x, contentTop, imgW, imgH);
+        pdf.addImage(imgData, 'PNG', x, contentTop, imgW, imgH, undefined, 'FAST');
         return contentTop + imgH;
       };
 
-      // ===== PAGE 1: Pie Chart (Overall Pass/Fail) =====
-      addPageHeader('Overall Pass/Fail');
-      const pieImg = await renderChartToImage('pie', pieData, {
-        plugins: { legend: { position: 'bottom', labels: { font: { size: 16 } } } },
-      }, 600, 500);
-      addChartImage(pieImg, 600, 500);
-      // Stats text
-      pdf.setFontSize(13);
-      pdf.setTextColor(33, 33, 33);
-      pdf.text(`Pass: ${passFailStats.pass}  |  Fail: ${passFailStats.fail}`, pageW / 2, pageH - 18, { align: 'center' });
-      const passPctVal = (passFailStats.pass + passFailStats.fail) > 0
-        ? ((passFailStats.pass / (passFailStats.pass + passFailStats.fail)) * 100).toFixed(2) + '%'
-        : 'N/A';
-      pdf.setFontSize(13);
-      pdf.setTextColor(56, 142, 60);
-      pdf.text(`Pass Percentage: ${passPctVal}`, pageW / 2, pageH - 10, { align: 'center' });
+      let isFirstPage = true;
 
-      // ===== PAGE 2: Subject-wise Bar Chart =====
-      if (barData && subjectNames.length > 0) {
-        pdf.addPage();
+      // ===== Pie Chart (Overall Pass/Fail) =====
+      if (selections.pie) {
+        if (!isFirstPage) pdf.addPage();
+        isFirstPage = false;
+        addPageHeader('Overall Pass/Fail');
+        const pieImg = await renderChartToImage('pie', pieData, {
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 16 } } } },
+        }, 600, 500);
+        addChartImage(pieImg, 600, 500);
+        // Stats text
+        pdf.setFontSize(13);
+        pdf.setTextColor(33, 33, 33);
+        pdf.text(`Pass: ${passFailStats.pass}  |  Fail: ${passFailStats.fail}`, pageW / 2, pageH - 18, { align: 'center' });
+        const passPctVal = (passFailStats.pass + passFailStats.fail) > 0
+          ? ((passFailStats.pass / (passFailStats.pass + passFailStats.fail)) * 100).toFixed(2) + '%'
+          : 'N/A';
+        pdf.setFontSize(13);
+        pdf.setTextColor(56, 142, 60);
+        pdf.text(`Pass Percentage: ${passPctVal}`, pageW / 2, pageH - 10, { align: 'center' });
+      }
+
+      // ===== Subject-wise Bar Chart =====
+      if (selections.bar && barData && subjectNames.length > 0) {
+        if (!isFirstPage) pdf.addPage();
+        isFirstPage = false;
         addPageHeader('Subject-wise Pass/Fail');
         const barImg = await renderChartToImage('bar', barData, {
           plugins: { legend: { position: 'top', labels: { font: { size: 14 } } } },
@@ -830,11 +1052,13 @@ const TeachersCorner = () => {
         }, 900, 500);
         addChartImage(barImg, 900, 500);
 
-        // ===== PAGE 3: Subject-wise Table =====
+        // ===== Subject-wise Table =====
         pdf.addPage();
         addPageHeader('Subject-wise Pass/Fail Percentage');
+        // Adjusted column widths to prevent overlap
         const cols = ['Subject Code', 'Subject Name', 'Pass %', 'Fail %', '# Pass', '# Fail'];
-        const colWidths = [32, 80, 24, 24, 20, 20];
+        // Increase Subject Name width, slightly reduce others
+        const colWidths = [28, 110, 22, 22, 18, 18];
         const tableW = colWidths.reduce((a, b) => a + b, 0);
         const tableStartX = (pageW - tableW) / 2;
         let tableY = contentTop + 5;
@@ -854,8 +1078,24 @@ const TeachersCorner = () => {
         tableY += rowH;
         pdf.setFont(undefined, 'normal');
 
+        const lineH = 4; // height per line of text in mm
+        const cellPadTop = 3; // top padding inside cell
+        const cellPadBot = 2; // bottom padding inside cell
+
         barData.labels.forEach((shortName, idx) => {
-          if (tableY > pageH - 15) {
+          const name = subjectNames[idx];
+          const pass = barData.datasets[0].data[idx];
+          const fail = barData.datasets[1].data[idx];
+          const total = pass + fail;
+          const pPct = total > 0 ? ((pass / total) * 100).toFixed(1) + '%' : 'N/A';
+          const fPct = total > 0 ? ((fail / total) * 100).toFixed(1) + '%' : 'N/A';
+          const rowData = [subjectCodeMap[name] || shortName, name, pPct, fPct, String(pass), String(fail)];
+
+          // Pre-calculate wrapped lines for subject name to determine dynamic row height
+          const nameLines = pdf.splitTextToSize(String(name), colWidths[1] - 6);
+          const dynamicRowH = Math.max(rowH, cellPadTop + nameLines.length * lineH + cellPadBot);
+
+          if (tableY + dynamicRowH > pageH - 15) {
             pdf.addPage();
             addPageHeader('Subject-wise Pass/Fail Percentage (contd.)');
             tableY = contentTop + 5;
@@ -872,22 +1112,18 @@ const TeachersCorner = () => {
             tableY += rowH;
             pdf.setFont(undefined, 'normal');
           }
-          const name = subjectNames[idx];
-          const pass = barData.datasets[0].data[idx];
-          const fail = barData.datasets[1].data[idx];
-          const total = pass + fail;
-          const pPct = total > 0 ? ((pass / total) * 100).toFixed(1) + '%' : 'N/A';
-          const fPct = total > 0 ? ((fail / total) * 100).toFixed(1) + '%' : 'N/A';
-          const rowData = [subjectCodeMap[name] || shortName, name, pPct, fPct, String(pass), String(fail)];
 
           // Alternating row bg
           if (idx % 2 === 0) {
             pdf.setFillColor(245, 247, 250);
-            pdf.rect(tableStartX, tableY, tableW, rowH, 'F');
+            pdf.rect(tableStartX, tableY, tableW, dynamicRowH, 'F');
           }
           // Draw row border
           pdf.setDrawColor(200, 200, 200);
-          pdf.rect(tableStartX, tableY, tableW, rowH, 'S');
+          pdf.rect(tableStartX, tableY, tableW, dynamicRowH, 'S');
+
+          // Vertical center offset for single-line cells in a taller row
+          const singleLineY = tableY + (dynamicRowH + lineH) / 2;
 
           let rx = tableStartX;
           rowData.forEach((cell, i) => {
@@ -896,15 +1132,24 @@ const TeachersCorner = () => {
             else if (i === 4) pdf.setTextColor(56, 142, 60);
             else if (i === 5) pdf.setTextColor(211, 47, 47);
             else pdf.setTextColor(33, 33, 33);
-            pdf.text(String(cell).substring(0, 45), rx + 3, tableY + 6);
+            if (i === 1) {
+              // Render wrapped subject name lines
+              nameLines.forEach((line, li) => {
+                pdf.text(line, rx + 3, tableY + cellPadTop + (li + 1) * lineH);
+              });
+            } else {
+              pdf.text(String(cell).substring(0, 45), rx + 3, singleLineY);
+            }
             rx += colWidths[i];
           });
-          tableY += rowH;
+          tableY += dynamicRowH;
         });
       }
 
-      // ===== PAGE 4: Department-wise Bar Chart =====
-      pdf.addPage();
+      // ===== Department-wise Bar Chart (optional) =====
+      if (selections.dept) {
+      if (!isFirstPage) pdf.addPage();
+      isFirstPage = false;
       addPageHeader('Department-wise Result Data');
       // Plugin to draw data labels on each bar
       const deptBarLabelsPlugin = {
@@ -942,6 +1187,7 @@ const TeachersCorner = () => {
       pdf.setFontSize(9);
       pdf.setTextColor(120, 120, 120);
       pdf.text('Note: "FCD" = First Class with Distinction (>=70%)', pageW / 2, pageH - 8, { align: 'center' });
+      }
 
       // File name
       let collegeLabel = 'all';
@@ -991,7 +1237,8 @@ const TeachersCorner = () => {
       // Count pass/fail for this student in this sem (fail if any subject is F/fail)
       const semSubjects = Object.values(s.semesters[semKey] || {});
       const hasFail = semSubjects.some(subj => {
-        const res = (subj.result || '').trim().toLowerCase();
+        const { result } = getSubjectMarks(subj, revalMode);
+        const res = (result || '').trim().toLowerCase();
         return res === 'f' || res.includes('fail');
       });
       if (!hasFail) {
@@ -1001,7 +1248,8 @@ const TeachersCorner = () => {
         let totalMarks = 0;
         let maxMarksSum = 0;
         semSubjects.forEach(subj => {
-          const marks = Number(subj.total);
+          const { total } = getSubjectMarks(subj, revalMode);
+          const marks = Number(total);
           if (!isNaN(marks)) {
             totalMarks += marks;
             // If marks > 100, subject is out of 200
@@ -1052,11 +1300,30 @@ const TeachersCorner = () => {
         },
       ],
     };
-  }, [data, sem, batch, college]);
+  }, [data, sem, batch, college, revalMode]);
 
   return (
     <Box sx={{ maxWidth: 600, mx: "auto", mt: 6 }}>
       <Card sx={{ p: 4, borderRadius: 4, boxShadow: 3 }}>
+        <Box display="flex" justifyContent="flex-end" alignItems="center" mb={1}>
+          <button
+            style={{
+              padding: '6px 24px',
+              borderRadius: 8,
+              border: '2px solid #1e40af',
+              background: revalMode === 'after' ? '#1e40af' : '#ffffff',
+              color: revalMode === 'after' ? '#fff' : '#1e40af',
+              fontWeight: 700,
+              cursor: 'pointer',
+              minWidth: 160,
+              transition: 'all 0.2s',
+            }}
+            onClick={() => setRevalMode(revalMode === 'after' ? 'before' : 'after')}
+            title={revalMode === 'after' ? 'Click to view before reval' : 'Click to view after reval'}
+          >
+            {revalMode === 'after' ? 'After Reval (ON)' : 'After Reval (OFF)'}
+          </button>
+        </Box>
         <Typography variant="h4" align="center" gutterBottom>
           Teachers Corner
         </Typography>
@@ -1194,7 +1461,7 @@ const TeachersCorner = () => {
                 Export to Excel
               </button>
               <button
-                onClick={handleExportChartsPDF}
+                onClick={() => setShowPdfExportDialog(true)}
                 disabled={exportingPdf}
                 style={{
                   padding: '8px 24px',
@@ -1215,6 +1482,44 @@ const TeachersCorner = () => {
             </>;
           })()}
         </Box>
+
+        {/* PDF Chart Export Selection Dialog */}
+        {showPdfExportDialog && (
+          <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.2)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#fff', padding: 32, borderRadius: 12, boxShadow: '0 2px 16px #0002', minWidth: 340 }}>
+              <h3 style={{ marginBottom: 16 }}>Select Charts to Export</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={pdfChartSelections.pie} onChange={e => setPdfChartSelections(prev => ({ ...prev, pie: e.target.checked }))} />
+                  Overall Pass/Fail (Pie Chart)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={pdfChartSelections.bar} onChange={e => setPdfChartSelections(prev => ({ ...prev, bar: e.target.checked }))} />
+                  Subject-wise Pass/Fail (Bar Chart + Table)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={pdfChartSelections.dept} onChange={e => setPdfChartSelections(prev => ({ ...prev, dept: e.target.checked }))} />
+                  Department-wise Result
+                </label>
+              </div>
+              <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+                <button
+                  style={{ padding: '8px 24px', borderRadius: 8, background: '#e0e7ef', color: '#222', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                  onClick={() => setShowPdfExportDialog(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  style={{ padding: '8px 24px', borderRadius: 8, background: '#1e40af', color: '#fff', fontWeight: 700, border: 'none', cursor: pdfChartSelections.pie || pdfChartSelections.bar || pdfChartSelections.dept ? 'pointer' : 'not-allowed', opacity: pdfChartSelections.pie || pdfChartSelections.bar || pdfChartSelections.dept ? 1 : 0.5 }}
+                  disabled={!pdfChartSelections.pie && !pdfChartSelections.bar && !pdfChartSelections.dept}
+                  onClick={() => { setShowPdfExportDialog(false); handleExportChartsPDF(pdfChartSelections); }}
+                >
+                  Export PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Export Dialog */}
         {showExportDialog && (
@@ -1513,11 +1818,11 @@ const TeachersCorner = () => {
                   />
                 </Box>
                 {/* Subject-wise Pass/Fail Percentage Table */}
-                <Box mt={4} sx={{ width: '100%', maxWidth: 600 }}>
+                <Box mt={4} sx={{ width: '100%', maxWidth: 600, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                   <Typography variant="subtitle1" align="center" mb={1} fontWeight={700}>
                     Subject-wise Pass/Fail Percentage
                   </Typography>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', background: '#f8fafc', borderRadius: 8, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse', background: '#f8fafc', borderRadius: 8, overflow: 'hidden' }}>
                     <thead>
                       <tr style={{ background: '#e3e8ee' }}>
                         <th style={{ padding: 8, border: '1px solid #cbd5e1' }}>Subject Code</th>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { db } from "../firebase";
 import { ref, onValue } from "firebase/database";
+import { normalizeStudents } from "../normalizeStudents";
 import {
   Box,
   Typography,
@@ -26,6 +27,8 @@ export default function Toppers() {
   const [allBatches, setAllBatches] = useState([]);
   const [allBranches, setAllBranches] = useState([]);
   const [allColleges, setAllColleges] = useState([]);
+  const [expandedUsn, setExpandedUsn] = useState(null); // track which topper row is expanded
+  const [searchQuery, setSearchQuery] = useState(""); // search by name or USN
 
   useEffect(() => {
     // College code dictionary (shortened for brevity, use your full list)
@@ -221,7 +224,7 @@ export default function Toppers() {
 };
     const studentsRef = ref(db, "students");
     onValue(studentsRef, (snapshot) => {
-      const students = snapshot.val() || {};
+      const students = normalizeStudents(snapshot.val() || {});
       // Collect all unique semesters, batches, branches, colleges
       const semSet = new Set();
       const batchSet = new Set();
@@ -325,6 +328,37 @@ export default function Toppers() {
     });
   }, []);
 
+  // Helper to calculate percentage like Dashboard (total/maxMarks for all subjects)
+  const getPercentage = (topper, studentsMap) => {
+    // Find the student in the DB (if available)
+    // If not available, fallback to 800
+    let maxMarks = 800;
+    if (studentsMap && topper && topper.usn && topper.sem) {
+      const student = studentsMap[topper.usn];
+      if (student && student.semesters && student.semesters[topper.sem]) {
+        const subjects = Object.values(student.semesters[topper.sem] || {});
+        maxMarks = subjects.reduce((sum, subj) => {
+          // If total > 100, treat as 200 marks subject (e.g., project)
+          const t = parseInt(subj.total) || 0;
+          return sum + (t > 100 ? 200 : 100);
+        }, 0);
+      }
+    }
+    if (!topper.total || isNaN(topper.total) || !maxMarks) return "-";
+    return ((topper.total / maxMarks) * 100).toFixed(2);
+  };
+
+  // Store studentsMap for percentage calculation
+  const [studentsMap, setStudentsMap] = useState({});
+
+  useEffect(() => {
+    // Listen to students DB for percentage calculation
+    const studentsRef = ref(db, "students");
+    return onValue(studentsRef, (snapshot) => {
+      setStudentsMap(normalizeStudents(snapshot.val() || {}));
+    });
+  }, []);
+
   return (
     <Box sx={{ minHeight: '100vh', py: 6, px: { xs: 0, sm: 0 } }}>
       <Card
@@ -419,6 +453,14 @@ export default function Toppers() {
                   <option key={b} value={b}>{b}</option>
                 ))}
             </select>
+            {/* Search Filter */}
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search Name / USN"
+              style={{ width: 180, padding: 8, borderRadius: 6, marginTop: 4, border: '1px solid #cbd5e1', outline: 'none', color: '#000' }}
+            />
           </Box>
           {/* Semester Filter - horizontal sliding window, mobile fix */}
           <Box mb={3} sx={{
@@ -517,31 +559,138 @@ export default function Toppers() {
                       <TableCell>Branch</TableCell>
                       <TableCell>Semester</TableCell>
                       <TableCell>Total</TableCell>
+                      <TableCell>Percentage</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {toppers
-                      .filter(s =>
-                        (semFilter ? s.sem === semFilter : false) &&
-                        (batchFilter ? s.batch === batchFilter : true) &&
-                        (branchFilter ? s.branch === branchFilter : true) &&
-                        (collegeFilter ? s.collegeCode === collegeFilter : true)
-                      )
-                      .map((s, i) => (
-                        <TableRow key={s.usn + s.sem} hover>
-                          <TableCell>{i + 1}</TableCell>
-                          <TableCell>{s.name}</TableCell>
-                          <TableCell>{s.usn}</TableCell>
-                          <TableCell>{s.branch}</TableCell>
-                          <TableCell>{s.sem}</TableCell>
-                          <TableCell>{s.total}</TableCell>
-                        </TableRow>
-                      ))}
+                    {(() => {
+                      // First get the full ranked list (without search filter) to assign real ranks
+                      const rankedList = toppers
+                        .filter(s =>
+                          (semFilter ? s.sem === semFilter : false) &&
+                          (batchFilter ? s.batch === batchFilter : true) &&
+                          (branchFilter ? s.branch === branchFilter : true) &&
+                          (collegeFilter ? s.collegeCode === collegeFilter : true)
+                        )
+                        .map((s, i) => ({ ...s, rank: i + 1 }));
+                      // Then apply search filter for display, keeping original rank
+                      return rankedList
+                        .filter(s =>
+                          searchQuery
+                            ? (s.name && s.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                              (s.usn && s.usn.toLowerCase().includes(searchQuery.toLowerCase()))
+                            : true
+                        )
+                        .map(s => (
+                          <TableRow
+                            key={s.usn + s.sem}
+                            hover
+                            onClick={() => setExpandedUsn(s.usn + '_' + s.sem)}
+                            sx={{ cursor: 'pointer' }}
+                          >
+                            <TableCell>{s.rank}</TableCell>
+                            <TableCell>{s.name}</TableCell>
+                            <TableCell>{s.usn}</TableCell>
+                            <TableCell>{s.branch}</TableCell>
+                            <TableCell>{s.sem}</TableCell>
+                            <TableCell>{s.total}</TableCell>
+                            <TableCell>{getPercentage(s, studentsMap)}%</TableCell>
+                          </TableRow>
+                        ));
+                    })()}
                   </TableBody>
                 </Table>
               </TableContainer>
             </Box>
           )}
+          {/* Popup Modal for Subject-wise Results */}
+          {expandedUsn && (() => {
+            const parts = expandedUsn.split('_');
+            const usn = parts.slice(0, -1).join('_');
+            const sem = parts[parts.length - 1];
+            const student = studentsMap && studentsMap[usn];
+            const semSubjects = student && student.semesters && student.semesters[sem]
+              ? Object.entries(student.semesters[sem])
+              : [];
+            const name = student?.name || usn;
+            return (
+              <div
+                onClick={() => setExpandedUsn(null)}
+                style={{
+                  position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                  background: 'rgba(0,0,0,0.45)', zIndex: 1300,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <div
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    background: '#fff', borderRadius: 16, padding: '24px 20px 20px',
+                    boxShadow: '0 8px 40px rgba(0,0,0,0.18)', maxWidth: 700, width: '95vw',
+                    maxHeight: '85vh', overflowY: 'auto', position: 'relative',
+                  }}
+                >
+                  {/* Close X button */}
+                  <button
+                    onClick={() => setExpandedUsn(null)}
+                    style={{
+                      position: 'absolute', top: 10, right: 14,
+                      background: 'none', border: 'none', fontSize: 26, fontWeight: 700,
+                      color: '#64748b', cursor: 'pointer', lineHeight: 1, padding: '2px 6px',
+                      borderRadius: 6, transition: 'color 0.2s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#d32f2f'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#1e40af', mb: 0.5 }}>
+                    {name}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#475569', mb: 2 }}>
+                    USN: {usn} &nbsp;|&nbsp; Semester {sem}
+                  </Typography>
+                  {semSubjects.length > 0 ? (
+                    <TableContainer component={Paper} sx={{ boxShadow: 0, borderRadius: 2 }}>
+                      <Table size="small" sx={{ '& th, & td': { padding: { xs: '4px 6px', sm: '6px 12px' } } }}>
+                        <TableHead>
+                          <TableRow sx={{ background: '#1e40af' }}>
+                            <TableCell sx={{ fontWeight: 700, color: '#fff' }}>Subject Code</TableCell>
+                            <TableCell sx={{ fontWeight: 700, color: '#fff' }}>Subject Name</TableCell>
+                            <TableCell sx={{ fontWeight: 700, color: '#fff' }}>Internal</TableCell>
+                            <TableCell sx={{ fontWeight: 700, color: '#fff' }}>External</TableCell>
+                            <TableCell sx={{ fontWeight: 700, color: '#fff' }}>Total</TableCell>
+                            <TableCell sx={{ fontWeight: 700, color: '#fff' }}>Result</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {semSubjects.map(([code, subj]) => {
+                            const res = (subj.result || '').trim().toUpperCase();
+                            const isFail = res === 'F' || res.includes('FAIL');
+                            return (
+                              <TableRow key={code} sx={{ '&:nth-of-type(even)': { background: '#f8fafc' } }}>
+                                <TableCell>{code}</TableCell>
+                                <TableCell>{subj.subject_name || '-'}</TableCell>
+                                <TableCell>{subj.internal ?? '-'}</TableCell>
+                                <TableCell>{subj.external ?? '-'}</TableCell>
+                                <TableCell sx={{ fontWeight: 700 }}>{subj.total ?? '-'}</TableCell>
+                                <TableCell sx={{ fontWeight: 700, color: isFail ? '#d32f2f' : '#388e3c' }}>
+                                  {isFail ? 'Fail' : 'Pass'}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">No subject data available.</Typography>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
     </Box>

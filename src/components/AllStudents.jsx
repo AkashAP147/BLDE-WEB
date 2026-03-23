@@ -3,8 +3,12 @@ import CircularProgress from "@mui/material/CircularProgress";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { ref, onValue } from "firebase/database";
+import { normalizeStudents } from "../normalizeStudents";
 import { Box, Typography, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Card, CardContent, Grid, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
 import { Pie } from "react-chartjs-2";
+import jsPDF from "jspdf";
+import { Chart, ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from "chart.js";
+Chart.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 
 const branches = [
   { code: "CI", name: "Artificial Intelligence & Machine Learning" },
@@ -215,11 +219,14 @@ export default function AllStudents() {
   const [showStudentStats, setShowStudentStats] = useState(false);
   const [college, setCollege] = useState("");
   const [allColleges, setAllColleges] = useState([]);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [showPdfExportDialog, setShowPdfExportDialog] = useState(false);
+  const [pdfChartSelections, setPdfChartSelections] = useState({ pie: true, bar: true, dept: true });
 
   useEffect(() => {
     const studentsRef = ref(db, "students");
     return onValue(studentsRef, (snapshot) => {
-      const data = snapshot.val() || {};
+      const data = normalizeStudents(snapshot.val() || {});
       setStudents(data);
       // Collect all unique college codes from USN
       const collegeSet = new Set();
@@ -344,6 +351,417 @@ export default function AllStudents() {
     ).sort((a, b) => Number(a) - Number(b));
   }, [students, college, batch, branch]);
 
+  // Consolidated PDF export: all branches in one PDF
+  const handleExportConsolidatedPDF = async (selections) => {
+    setExportingPdf(true);
+    try {
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 15;
+      const contentTop = 30;
+      const chartMaxW = pageW - margin * 2;
+      const chartMaxH = pageH - contentTop - 20;
+
+      // Get college display name
+      let collegeName = 'All Colleges';
+      if (college) {
+        const cName = Object.entries(college_code_dict).find(([, code]) => code === college);
+        collegeName = cName ? cName[0] : college;
+      }
+
+      // Build data array from students object
+      const allData = Object.entries(students).map(([usn, s]) => {
+        const collegeCode = usn && usn.length >= 3 ? usn.substring(0, 3).toUpperCase() : '';
+        return { usn: s.usn || usn, ...s, collegeCode };
+      });
+
+      // Apply college, batch, semester filters
+      const baseFiltered = allData.filter(s => {
+        if (college && s.collegeCode !== college) return false;
+        if (batch && String(s.batch) !== String(batch)) return false;
+        if (semester && !(s.semesters && Object.keys(s.semesters).includes(semester))) return false;
+        if (!s.semesters || Object.keys(s.semesters).length === 0) return false;
+        return true;
+      });
+
+      // Get all semesters present in filtered data
+      const allSemesters = [...new Set(baseFiltered.flatMap(s => Object.keys(s.semesters || {})))]
+        .map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 8).sort((a, b) => a - b);
+      const semKey = semester || (allSemesters.length > 0 ? String(allSemesters[allSemesters.length - 1]) : '1');
+
+      // Get all unique branches
+      const allBranches = [...new Set(baseFiltered.map(s => s.branch).filter(Boolean))].sort();
+
+      // Helper: render a chart to image
+      const renderChartToImage = (type, chartData, chartOptions = {}, width = 800, height = 500, chartPlugins = []) => {
+        return new Promise((resolve) => {
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = width;
+          tempCanvas.height = height;
+          const ctx = tempCanvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          const tempChart = new Chart(ctx, {
+            type,
+            data: JSON.parse(JSON.stringify(chartData)),
+            options: { ...chartOptions, responsive: false, animation: false, devicePixelRatio: 1 },
+            plugins: chartPlugins,
+          });
+          requestAnimationFrame(() => {
+            const imgData = tempCanvas.toDataURL('image/png');
+            tempChart.destroy();
+            resolve(imgData);
+          });
+        });
+      };
+
+      // Helper: add header
+      const addPageHeader = (title, headerText) => {
+        pdf.setFontSize(10);
+        pdf.setTextColor(100, 100, 100);
+        pdf.text(headerText, pageW / 2, 10, { align: 'center' });
+        pdf.setFontSize(16);
+        pdf.setTextColor(33, 33, 33);
+        pdf.text(title, pageW / 2, 22, { align: 'center' });
+      };
+
+      // Helper: add chart image centered on page
+      const addChartImage = (imgData, canvasW, canvasH) => {
+        const ratio = Math.min(chartMaxW / canvasW, chartMaxH / canvasH);
+        const imgW = canvasW * ratio;
+        const imgH = canvasH * ratio;
+        const x = (pageW - imgW) / 2;
+        pdf.addImage(imgData, 'PNG', x, contentTop, imgW, imgH, undefined, 'FAST');
+        return contentTop + imgH;
+      };
+
+      // Helper: compute pass/fail for a set of students in a given semester
+      const computePassFail = (studentsArr, semK) => {
+        let pass = 0, fail = 0;
+        studentsArr.forEach(s => {
+          if (!s.semesters || !s.semesters[semK]) return;
+          const semSubjects = Object.values(s.semesters[semK] || {});
+          const semList = Object.keys(s.semesters || {});
+          const currentSemIdx = semList.indexOf(semK);
+          const currentSubjectNames = semSubjects.map(subj => subj.subject_name);
+          let previousAttempts = [];
+          for (let i = 0; i < currentSemIdx; ++i) {
+            const prevSem = semList[i];
+            Object.values(s.semesters[prevSem] || {}).forEach(subj => {
+              const isFail = subj.result && (subj.result.trim().toUpperCase() === 'F' || subj.result.trim().toLowerCase().includes('fail'));
+              if (currentSubjectNames.includes(subj.subject_name) && isFail) {
+                previousAttempts.push(subj.subject_name);
+              }
+            });
+          }
+          const mainSubjects = Object.values(s.semesters[semK] || {}).filter(subj => !previousAttempts.includes(subj.subject_name));
+          if (mainSubjects.length > 0) {
+            const hasFail = mainSubjects.some(subj => {
+              const res = (subj.result || '').trim().toLowerCase();
+              return res === 'f' || res.includes('fail');
+            });
+            if (hasFail) fail++; else pass++;
+          }
+        });
+        return { pass, fail };
+      };
+
+      // Helper: compute subject-wise pass/fail for a set of students
+      const computeSubjectWise = (studentsArr, semK) => {
+        const subjectCount = {};
+        const subjectShortMap = {};
+        const subjectCodeMap = {};
+        const filtered = studentsArr.filter(s => s.semesters && s.semesters[semK]);
+        filtered.forEach(s => {
+          const semSubjects = Object.values(s.semesters?.[semK] || {});
+          const semList = Object.keys(s.semesters || {});
+          const currentSemIdx = semList.indexOf(semK);
+          let previousAttempts = [];
+          for (let i = 0; i < currentSemIdx; ++i) {
+            const prevSem = semList[i];
+            Object.values(s.semesters[prevSem] || {}).forEach(subj => {
+              const isFail = subj.result && (subj.result.trim().toUpperCase() === 'F' || subj.result.trim().toLowerCase().includes('fail'));
+              if (semSubjects.some(sj => sj.subject_name === subj.subject_name) && isFail) {
+                previousAttempts.push(subj.subject_name);
+              }
+            });
+          }
+          Object.entries(s.semesters?.[semK] || {}).forEach(([code, subj]) => {
+            if (!previousAttempts.includes(subj.subject_name)) {
+              subjectCount[subj.subject_name] = (subjectCount[subj.subject_name] || 0) + 1;
+              if (subj.subject_name && !subjectCodeMap[subj.subject_name]) subjectCodeMap[subj.subject_name] = code;
+              if (subj.subject_name && !subjectShortMap[subj.subject_name]) {
+                subjectShortMap[subj.subject_name] = subj.subject_code || subj.subject_name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 6);
+              }
+            }
+          });
+        });
+        const minCount = Math.max(2, Math.floor(filtered.length * 0.2));
+        const subjectNames = Object.keys(subjectCount).filter(name => subjectCount[name] >= minCount);
+        const subjectPassFail = subjectNames.map(name => {
+          let pass = 0, fail = 0;
+          filtered.forEach(s => {
+            const mainSubj = Object.values(s.semesters[semK] || {}).find(subj => subj.subject_name === name);
+            if (mainSubj) {
+              const res = (mainSubj.result || '').trim().toLowerCase();
+              if (res === 'f' || res.includes('fail')) fail++; else if (res) pass++;
+            }
+          });
+          return { name, pass, fail };
+        });
+        return { subjectNames, subjectPassFail, subjectShortMap, subjectCodeMap };
+      };
+
+      let isFirstPage = true;
+
+      // ===== Per-branch charts =====
+      for (const branchName of allBranches) {
+        const branchStudents = baseFiltered.filter(s => s.branch === branchName);
+        const branchFiltered = branchStudents.filter(s => s.semesters && s.semesters[semKey]);
+        if (branchFiltered.length === 0) continue;
+
+        const headerText = `${collegeName} | Sem ${semKey} | ${branchName} | Batch: ${batch || 'All'}`;
+
+        // --- Pie Chart ---
+        if (selections.pie) {
+          if (!isFirstPage) pdf.addPage();
+          isFirstPage = false;
+          const { pass, fail } = computePassFail(branchFiltered, semKey);
+          addPageHeader(`Overall Pass/Fail — ${branchName}`, headerText);
+          const branchPieData = {
+            labels: ['Pass', 'Fail'],
+            datasets: [{ data: [pass, fail], backgroundColor: ['#4caf50', '#f44336'] }],
+          };
+          const pieImg = await renderChartToImage('pie', branchPieData, {
+            plugins: { legend: { position: 'bottom', labels: { font: { size: 16 } } } },
+          }, 600, 500);
+          addChartImage(pieImg, 600, 500);
+          pdf.setFontSize(13);
+          pdf.setTextColor(33, 33, 33);
+          pdf.text(`Pass: ${pass}  |  Fail: ${fail}`, pageW / 2, pageH - 18, { align: 'center' });
+          const pctVal = (pass + fail) > 0 ? ((pass / (pass + fail)) * 100).toFixed(2) + '%' : 'N/A';
+          pdf.setFontSize(13);
+          pdf.setTextColor(56, 142, 60);
+          pdf.text(`Pass Percentage: ${pctVal}`, pageW / 2, pageH - 10, { align: 'center' });
+        }
+
+        // --- Subject-wise Bar Chart + Table ---
+        if (selections.bar) {
+          const { subjectNames: sNames, subjectPassFail: sPF, subjectShortMap: sSM, subjectCodeMap: sCM } = computeSubjectWise(branchStudents, semKey);
+          if (sNames.length > 0) {
+            if (!isFirstPage) pdf.addPage();
+            isFirstPage = false;
+            addPageHeader(`Subject-wise Pass/Fail — ${branchName}`, headerText);
+            const branchBarData = {
+              labels: sNames.map(name => sSM[name] || name),
+              datasets: [
+                { label: 'Pass', data: sPF.map(s => s.pass), backgroundColor: '#4caf50' },
+                { label: 'Fail', data: sPF.map(s => s.fail), backgroundColor: '#f44336' },
+              ],
+            };
+            const barImg = await renderChartToImage('bar', branchBarData, {
+              plugins: { legend: { position: 'top', labels: { font: { size: 14 } } } },
+              scales: {
+                x: { stacked: true, ticks: { font: { size: 11 } } },
+                y: { stacked: true, beginAtZero: true, ticks: { font: { size: 11 } } },
+              },
+            }, 900, 500);
+            addChartImage(barImg, 900, 500);
+
+            // --- Subject-wise Table ---
+            pdf.addPage();
+            addPageHeader(`Subject-wise Pass/Fail % — ${branchName}`, headerText);
+            const cols = ['Subject Code', 'Subject Name', 'Pass %', 'Fail %', '# Pass', '# Fail'];
+            const colWidths = [28, 110, 22, 22, 18, 18];
+            const tableW = colWidths.reduce((a, b) => a + b, 0);
+            const tableStartX = (pageW - tableW) / 2;
+            let tableY = contentTop + 5;
+            const rowH = 8;
+            const lineH = 4;
+            const cellPadTop = 3;
+            const cellPadBot = 2;
+
+            // Table header
+            pdf.setFontSize(10);
+            pdf.setFont(undefined, 'bold');
+            let hx = tableStartX;
+            cols.forEach((col, i) => {
+              pdf.setFillColor(66, 66, 66);
+              pdf.rect(hx, tableY, colWidths[i], rowH, 'F');
+              pdf.setTextColor(255, 255, 255);
+              pdf.text(col, hx + 3, tableY + 6);
+              hx += colWidths[i];
+            });
+            tableY += rowH;
+            pdf.setFont(undefined, 'normal');
+
+            sPF.forEach((subj, idx) => {
+              const name = subj.name;
+              const total = subj.pass + subj.fail;
+              const pPct = total > 0 ? ((subj.pass / total) * 100).toFixed(1) + '%' : 'N/A';
+              const fPct = total > 0 ? ((subj.fail / total) * 100).toFixed(1) + '%' : 'N/A';
+              const rowData = [sCM[name] || sSM[name] || '', name, pPct, fPct, String(subj.pass), String(subj.fail)];
+
+              const nameLines = pdf.splitTextToSize(String(name), colWidths[1] - 6);
+              const dynamicRowH = Math.max(rowH, cellPadTop + nameLines.length * lineH + cellPadBot);
+
+              if (tableY + dynamicRowH > pageH - 15) {
+                pdf.addPage();
+                addPageHeader(`Subject-wise Pass/Fail % — ${branchName} (contd.)`, headerText);
+                tableY = contentTop + 5;
+                pdf.setFont(undefined, 'bold');
+                let hx2 = tableStartX;
+                cols.forEach((col, i) => {
+                  pdf.setFillColor(66, 66, 66);
+                  pdf.rect(hx2, tableY, colWidths[i], rowH, 'F');
+                  pdf.setTextColor(255, 255, 255);
+                  pdf.text(col, hx2 + 3, tableY + 6);
+                  hx2 += colWidths[i];
+                });
+                tableY += rowH;
+                pdf.setFont(undefined, 'normal');
+              }
+
+              if (idx % 2 === 0) {
+                pdf.setFillColor(245, 247, 250);
+                pdf.rect(tableStartX, tableY, tableW, dynamicRowH, 'F');
+              }
+              pdf.setDrawColor(200, 200, 200);
+              pdf.rect(tableStartX, tableY, tableW, dynamicRowH, 'S');
+
+              const singleLineY = tableY + (dynamicRowH + lineH) / 2;
+              let rx = tableStartX;
+              rowData.forEach((cell, i) => {
+                if (i === 2) pdf.setTextColor(56, 142, 60);
+                else if (i === 3) pdf.setTextColor(211, 47, 47);
+                else if (i === 4) pdf.setTextColor(56, 142, 60);
+                else if (i === 5) pdf.setTextColor(211, 47, 47);
+                else pdf.setTextColor(33, 33, 33);
+                if (i === 1) {
+                  nameLines.forEach((line, li) => {
+                    pdf.text(line, rx + 3, tableY + cellPadTop + (li + 1) * lineH);
+                  });
+                } else {
+                  pdf.text(String(cell).substring(0, 45), rx + 3, singleLineY);
+                }
+                rx += colWidths[i];
+              });
+              tableY += dynamicRowH;
+            });
+          }
+        }
+      }
+
+      // ===== Department-wise summary chart (all branches combined) =====
+      if (selections.dept) {
+        if (!isFirstPage) pdf.addPage();
+        isFirstPage = false;
+        const summaryHeader = `${collegeName} | Sem ${semKey} | All Branches | Batch: ${batch || 'All'}`;
+        addPageHeader('Department-wise Result Summary', summaryHeader);
+
+        const branchMap = {};
+        let totalAppeared = 0, totalPassed = 0, totalFCD = 0;
+        function getShortBranchName(name) {
+          if (!name) return 'Unknown';
+          const words = name.split(' ');
+          if (words.length === 1) return name.slice(0, 3).toUpperCase();
+          return words.map(w => w[0].toUpperCase()).join('');
+        }
+        baseFiltered.forEach(s => {
+          if (!s.semesters || !s.semesters[semKey]) return;
+          const bName = s.branch || 'Unknown';
+          const bShort = getShortBranchName(bName);
+          if (!branchMap[bShort]) branchMap[bShort] = { appeared: 0, passed: 0, fcd: 0 };
+          branchMap[bShort].appeared++;
+          totalAppeared++;
+          const semSubjects = Object.values(s.semesters[semKey] || {});
+          const hasFail = semSubjects.some(subj => {
+            const res = (subj.result || '').trim().toLowerCase();
+            return res === 'f' || res.includes('fail');
+          });
+          if (!hasFail) {
+            branchMap[bShort].passed++;
+            totalPassed++;
+            let totalMarks = 0, maxMarksSum = 0;
+            semSubjects.forEach(subj => {
+              const marks = Number(subj.total);
+              if (!isNaN(marks)) { totalMarks += marks; maxMarksSum += (marks > 100 ? 200 : 100); }
+            });
+            if (maxMarksSum > 0 && (totalMarks / maxMarksSum) * 100 >= 70) { branchMap[bShort].fcd++; totalFCD++; }
+          }
+        });
+        const bShortNames = Object.keys(branchMap).sort();
+        bShortNames.push('Total');
+        const appearedArr = bShortNames.map(b => b === 'Total' ? totalAppeared : branchMap[b].appeared);
+        const passedArr = bShortNames.map(b => b === 'Total' ? totalPassed : branchMap[b].passed);
+        const fcdArr = bShortNames.map(b => b === 'Total' ? totalFCD : branchMap[b].fcd);
+        const passingPctArr = bShortNames.map(b => {
+          const app = b === 'Total' ? totalAppeared : branchMap[b].appeared;
+          const psd = b === 'Total' ? totalPassed : branchMap[b].passed;
+          return app > 0 ? Math.round((psd / app) * 100) : 0;
+        });
+        const deptChartData = {
+          labels: bShortNames,
+          datasets: [
+            { label: 'Appeared', data: appearedArr, backgroundColor: '#1976d2' },
+            { label: 'Passed', data: passedArr, backgroundColor: '#d32f2f' },
+            { label: 'FCD', data: fcdArr, backgroundColor: '#388e3c' },
+            { label: 'Passing%', data: passingPctArr, backgroundColor: '#7c4dff' },
+          ],
+        };
+        const deptBarLabelsPlugin = {
+          id: 'deptBarLabelsPdf',
+          afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            chart.data.datasets.forEach((dataset, dsIndex) => {
+              const meta = chart.getDatasetMeta(dsIndex);
+              if (!meta.hidden) {
+                meta.data.forEach((bar, index) => {
+                  const value = dataset.data[index];
+                  if (value === 0 || value === undefined) return;
+                  const label = dataset.label === 'Passing%' ? `${value}%` : String(value);
+                  ctx.save();
+                  ctx.fillStyle = '#222';
+                  ctx.font = 'bold 12px sans-serif';
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'bottom';
+                  ctx.fillText(label, bar.x, bar.y - 3);
+                  ctx.restore();
+                });
+              }
+            });
+          }
+        };
+        const deptImg = await renderChartToImage('bar', deptChartData, {
+          plugins: { legend: { position: 'top', labels: { font: { size: 14 } } } },
+          scales: {
+            x: { ticks: { font: { size: 12 } } },
+            y: { beginAtZero: true, title: { display: true, text: 'Count / %' }, ticks: { font: { size: 11 } } },
+          },
+        }, 900, 500, [deptBarLabelsPlugin]);
+        addChartImage(deptImg, 900, 500);
+        pdf.setFontSize(9);
+        pdf.setTextColor(120, 120, 120);
+        pdf.text('Note: "FCD" = First Class with Distinction (>=70%)', pageW / 2, pageH - 8, { align: 'center' });
+      }
+
+      // Save
+      let collegeLabel = 'all';
+      if (college) {
+        const cName = Object.entries(college_code_dict).find(([, code]) => code === college);
+        if (cName) collegeLabel = cName[0].replace(/[^a-zA-Z0-9]/g, '_');
+        else collegeLabel = college;
+      }
+      pdf.save(`consolidated_charts_sem${semKey}_${collegeLabel}_${batch || 'all'}.pdf`);
+    } catch (err) {
+      console.error('PDF export error:', err);
+      alert('Failed to export PDF. Please try again.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box p={2} display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="60vh">
@@ -363,11 +781,51 @@ export default function AllStudents() {
             Admin Corner
           </Typography>
           {/* Admin Stats Feature Button */}
-          <Box display="flex" justifyContent="center" mb={2}>
+          <Box display="flex" justifyContent="center" gap={2} mb={2}>
             <Button variant="contained" color="primary" sx={{ fontWeight: 700, borderRadius: 3 }} onClick={() => setShowStudentStats(true)}>
               Show Excluded Students
             </Button>
+            <Button
+              variant="contained"
+              sx={{ fontWeight: 700, borderRadius: 3, background: '#1e40af' }}
+              onClick={() => setShowPdfExportDialog(true)}
+              disabled={exportingPdf}
+            >
+              {exportingPdf ? 'Exporting...' : 'Export All Charts PDF'}
+            </Button>
           </Box>
+          {/* PDF Export Dialog */}
+          <Dialog open={showPdfExportDialog} onClose={() => setShowPdfExportDialog(false)} maxWidth="xs" fullWidth>
+            <DialogTitle>Export Consolidated Charts PDF</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" sx={{ mb: 2, color: '#64748b' }}>Select chart types to include for every branch:</Typography>
+              <Box display="flex" flexDirection="column" gap={1}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={pdfChartSelections.pie} onChange={e => setPdfChartSelections(prev => ({ ...prev, pie: e.target.checked }))} />
+                  Overall Pass/Fail (Pie Chart per Branch)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={pdfChartSelections.bar} onChange={e => setPdfChartSelections(prev => ({ ...prev, bar: e.target.checked }))} />
+                  Subject-wise Pass/Fail (Bar Chart + Table per Branch)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={pdfChartSelections.dept} onChange={e => setPdfChartSelections(prev => ({ ...prev, dept: e.target.checked }))} />
+                  Department-wise Summary (All Branches Combined)
+                </label>
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setShowPdfExportDialog(false)} color="inherit">Cancel</Button>
+              <Button
+                variant="contained"
+                disabled={!pdfChartSelections.pie && !pdfChartSelections.bar && !pdfChartSelections.dept}
+                onClick={() => { setShowPdfExportDialog(false); handleExportConsolidatedPDF(pdfChartSelections); }}
+                sx={{ background: '#1e40af' }}
+              >
+                Export PDF
+              </Button>
+            </DialogActions>
+          </Dialog>
           {/* Student Stats Dialog */}
           <Dialog open={showStudentStats} onClose={() => setShowStudentStats(false)} maxWidth="sm" fullWidth>
             <DialogTitle>Excluded Students (No Data)</DialogTitle>
@@ -401,22 +859,22 @@ export default function AllStudents() {
             </Grid>
             <Grid>
               <FormControl fullWidth sx={{ minWidth: 120 }}>
-                <InputLabel>Branch</InputLabel>
-                <Select value={branch} label="Branch" onChange={(e) => setBranch(e.target.value)} sx={{ minWidth: 120 }}>
+                <InputLabel>Batch</InputLabel>
+                <Select value={batch} label="Batch" onChange={(e) => setBatch(e.target.value)} sx={{ minWidth: 120 }}>
                   <MenuItem value="">All</MenuItem>
-                  {branchOptions.map((b) => (
-                    <MenuItem key={b} value={b}>{branches.find(x => x.code === b)?.name || b}</MenuItem>
+                  {batchOptions.map((b) => (
+                    <MenuItem key={b} value={b}>{b}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
             <Grid>
               <FormControl fullWidth sx={{ minWidth: 120 }}>
-                <InputLabel>Batch</InputLabel>
-                <Select value={batch} label="Batch" onChange={(e) => setBatch(e.target.value)} sx={{ minWidth: 120 }}>
+                <InputLabel>Branch</InputLabel>
+                <Select value={branch} label="Branch" onChange={(e) => setBranch(e.target.value)} sx={{ minWidth: 120 }}>
                   <MenuItem value="">All</MenuItem>
-                  {batchOptions.map((b) => (
-                    <MenuItem key={b} value={b}>{b}</MenuItem>
+                  {branchOptions.map((b) => (
+                    <MenuItem key={b} value={b}>{branches.find(x => x.code === b)?.name || b}</MenuItem>
                   ))}
                 </Select>
               </FormControl>

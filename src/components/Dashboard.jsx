@@ -7,6 +7,7 @@ import { useLocation } from "react-router-dom";
 
 import { db } from "../firebase";
 import { ref, onValue } from "firebase/database";
+import { normalizeStudents } from "../normalizeStudents";
 import {
   Box,
   Typography,
@@ -82,6 +83,34 @@ export default function Dashboard() {
   }
   const currentIndex = student ? usnList.findIndex(k => k.toLowerCase() === student.usn.toLowerCase()) : -1;
 
+  // Global Latest Result mapping: each subject's original semester and absolute latest result
+  const globalLatestResults = (() => {
+    if (!student || !student.semesters) return {};
+    const map = {};
+    const sems = Object.keys(student.semesters).sort((a, b) => Number(a) - Number(b));
+    // 1. Find original semester for each subject (by name)
+    sems.forEach(sem => {
+      Object.values(student.semesters[sem] || {}).forEach(subj => {
+        if (!map[subj.subject_name]) {
+          map[subj.subject_name] = { originalSem: sem, latestSubj: subj, latestSem: sem };
+        }
+      });
+    });
+    // 2. Find absolute latest result for each subject (highest sem index)
+    sems.forEach(sem => {
+      Object.values(student.semesters[sem] || {}).forEach(subj => {
+        if (map[subj.subject_name]) {
+          // Compare semester indices
+          if (Number(sem) >= Number(map[subj.subject_name].latestSem)) {
+            map[subj.subject_name].latestSubj = subj;
+            map[subj.subject_name].latestSem = sem;
+          }
+        }
+      });
+    });
+    return map;
+  })();
+
   // Keyboard navigation handler (left/right for students, up/down for semesters)
   const handleArrowNav = useCallback((e) => {
     if (!student || usnList.length === 0) return;
@@ -131,13 +160,26 @@ export default function Dashboard() {
   const resultRef = useRef(null);
   const [highlightFail, setHighlightFail] = useState(true);
   const [showSgpaCgpa, setShowSgpaCgpa] = useState(false);
-  const [credits, setCredits] = useState({}); // { [sem]: { [subjectCode]: creditValue } }
+  const [showDates, setShowDates] = useState(false);
+  const [showSubjectCode, setShowSubjectCode] = useState(false);
+  const [credits, setCredits] = useState({});
+  const [subjectsDb, setSubjectsDb] = useState({}); // subjects collection from Firebase
+  const [expandedPrevAttempt, setExpandedPrevAttempt] = useState(null);
+  const [expandedMainSubject, setExpandedMainSubject] = useState(null); // subject code of expanded main result row
 
   useEffect(() => {
     const studentsRef = ref(db, "students");
     return onValue(studentsRef, (snapshot) => {
-      setStudents(snapshot.val() || {});
+      setStudents(normalizeStudents(snapshot.val() || {}));
       setLoading(false);
+    });
+  }, []);
+
+  // Fetch subjects (credits) from Firebase
+  useEffect(() => {
+    const subjectsRef = ref(db, "subjects");
+    return onValue(subjectsRef, (snapshot) => {
+      setSubjectsDb(snapshot.val() || {});
     });
   }, []);
 
@@ -242,7 +284,7 @@ export default function Dashboard() {
     if (pct >= 70) return { grade: 'B', points: 8 };
     if (pct >= 60) return { grade: 'C', points: 7 };
     if (pct >= 50) return { grade: 'D', points: 6 };
-    if (pct >= 40) return { grade: 'E', points: 5 };
+    if (pct >= 40) return { grade: 'E', points: 4 };
     return { grade: 'F', points: 0 };
   }
 
@@ -296,7 +338,7 @@ export default function Dashboard() {
 
           {/* Search Section */}
           <Grid container spacing={1.5} justifyContent="center" sx={{ mb: { xs: 1, sm: 0 } }}>
-            <Grid item xs={8} sm={5} md={4}>
+            <Grid size={{ xs: 8, sm: 5, md: 4 }}>
               <TextField
                 label="Enter USN"
                 value={usnInput}
@@ -314,7 +356,7 @@ export default function Dashboard() {
                 }}
               />
             </Grid>
-            <Grid item xs={4} sm={2} md={2}>
+            <Grid size={{ xs: 4, sm: 2, md: 2 }}>
               <Button
                 variant="contained"
                 fullWidth
@@ -432,7 +474,10 @@ export default function Dashboard() {
                   const prevSem = semList[i];
                   const prevSubjects = Object.values(student.semesters[prevSem] || {});
                   prevSubjects.forEach(subj => {
-                    const isFail = subj.result && (subj.result.trim().toUpperCase() === 'F' || subj.result.trim().toLowerCase().includes('fail'));
+                    // Use _regular_result if available (the regular exam result, not makeup)
+                    const resultToCheck = subj._regular_result || subj.result || '';
+                    const res = resultToCheck.trim().toUpperCase();
+                    const isFail = res === 'F' || res.includes('FAIL') || res === 'A' || res === 'X' || res === 'NE';
                     if (currentSubjectNames.includes(subj.subject_name) && isFail) {
                       previousAttemptsRaw.push({ sem: prevSem, ...subj });
                     }
@@ -443,24 +488,11 @@ export default function Dashboard() {
                 let latestAttemptsMap = {};
                 previousAttemptsRaw.forEach(attempt => {
                   const subjName = attempt.subject_name;
-                  // Search for the latest attempt for this subject in all later semesters (including current)
-                  let latest = attempt;
-                  for (let j = currentSemIdx + 1; j < semList.length; ++j) {
-                    const nextSem = semList[j];
-                    const nextSubjects = Object.values(student.semesters[nextSem] || {});
-                    nextSubjects.forEach(subj => {
-                      if (subj.subject_name === subjName) {
-                        latest = { sem: nextSem, ...subj };
-                      }
-                    });
+                  // Use our pre-calculated global latest result
+                  const latest = globalLatestResults[subjName];
+                  if (latest) {
+                    latestAttemptsMap[subjName] = { sem: latest.latestSem, ...latest.latestSubj };
                   }
-                  // Also check current sem (if subject is present)
-                  currentSubjects.forEach(subj => {
-                    if (subj.subject_name === subjName) {
-                      latest = { sem: selectedSem, ...subj };
-                    }
-                  });
-                  latestAttemptsMap[subjName] = latest;
                 });
                 // Remove duplicates (only latest for each subject)
                 const previousAttempts = Object.values(latestAttemptsMap);
@@ -483,13 +515,47 @@ export default function Dashboard() {
                         <Button
                           variant={showSgpaCgpa ? 'contained' : 'outlined'}
                           sx={{ background: showSgpaCgpa ? '#0ea5e9' : undefined, fontWeight: 700, borderRadius: 2 }}
-                          onClick={() => setShowSgpaCgpa(v => !v)}
+                          onClick={() => {
+                            const newVal = !showSgpaCgpa;
+                            setShowSgpaCgpa(newVal);
+                            // Auto-populate credits from DB when toggling ON
+                            if (newVal && student && student.semesters && Object.keys(subjectsDb).length > 0) {
+                              const autoCredits = { ...credits };
+                              Object.keys(student.semesters).forEach(sem => {
+                                if (!autoCredits[sem]) autoCredits[sem] = {};
+                                Object.keys(student.semesters[sem] || {}).forEach(code => {
+                                  // Only auto-fill if user hasn't already set a value
+                                  if (autoCredits[sem][code] === undefined || autoCredits[sem][code] === '') {
+                                    const dbSubj = subjectsDb[code] || subjectsDb[code.toUpperCase()] || subjectsDb[code.toLowerCase()];
+                                    if (dbSubj && dbSubj.credits) {
+                                      autoCredits[sem][code] = parseInt(dbSubj.credits) || 0;
+                                    }
+                                  }
+                                });
+                              });
+                              setCredits(autoCredits);
+                            }
+                          }}
                         >
                           {showSgpaCgpa ? 'Hide' : 'Calculate'} SGPA & CGPA
                         </Button>
+                        <Button
+                          variant={showDates ? 'contained' : 'outlined'}
+                          sx={{ background: showDates ? '#7c3aed' : undefined, fontWeight: 700, borderRadius: 2 }}
+                          onClick={() => setShowDates(v => !v)}
+                        >
+                          {showDates ? 'Hide' : 'Show'} Result Dates
+                        </Button>
+                        <Button
+                          variant={showSubjectCode ? 'contained' : 'outlined'}
+                          sx={{ background: showSubjectCode ? '#16a34a' : undefined, fontWeight: 700, borderRadius: 2 }}
+                          onClick={() => setShowSubjectCode(v => !v)}
+                        >
+                          {showSubjectCode ? 'Hide' : 'Show'} Subject Code
+                        </Button>
                       </Box>
 
-                      {/* Calculate and show percentage (exclude previous attempts) */}
+                      {/* Calculate and show percentage (exclude previous attempts, use latest marks after reval if present) */}
                       {(() => {
                         // Only use subjects shown in the main table (not in previousAttempts)
                         const mainSubjects = Object.entries(student.semesters[selectedSem] || {})
@@ -499,11 +565,19 @@ export default function Dashboard() {
                             );
                           })
                           .map(([_, subj]) => subj);
-                        const totalMarks = mainSubjects.reduce((sum, subj) => sum + (parseInt(subj.total) || 0), 0);
+                        // Use reval marks if present, otherwise external
+                        const totalMarks = mainSubjects.reduce((sum, subj) => {
+                          const internal = parseInt(subj.internal) || 0;
+                          const ext = subj.rv_result || subj.final_result ? (parseInt(subj.rv_marks || subj.final_marks) || 0) : (parseInt(subj.external) || 0);
+                          return sum + internal + ext;
+                        }, 0);
                         // Account for subjects with max marks of 200 (e.g., projects)
                         const maxMarks = mainSubjects.reduce((sum, subj) => {
-                          const marks = parseInt(subj.total) || 0;
-                          return sum + (marks > 100 ? 200 : 100);
+                          // Use reval marks if present, otherwise external
+                          const ext = subj.rv_result || subj.final_result ? (parseInt(subj.rv_marks || subj.final_marks) || 0) : (parseInt(subj.external) || 0);
+                          const internal = parseInt(subj.internal) || 0;
+                          const total = internal + ext;
+                          return sum + (total > 100 ? 200 : 100);
                         }, 0);
                         const percent = maxMarks > 0 ? ((totalMarks / maxMarks) * 100).toFixed(2) : "0.00";
                         return (
@@ -514,14 +588,14 @@ export default function Dashboard() {
                       })()}
 
                       <TableContainer
-                          component={Paper}
-                          sx={{
-                            background: '#ffffff',
-                            borderRadius: 3,
-                            width: '100%',
-                            overflowX: 'auto',
-                          }}
-                        >
+                        component={Paper}
+                        sx={{
+                          background: '#ffffff',
+                          borderRadius: 3,
+                          width: '100%',
+                          overflowX: 'auto',
+                        }}
+                      >
                         <Table
                           size="small"
                           sx={{
@@ -541,11 +615,20 @@ export default function Dashboard() {
                         >
                           <TableHead>
                             <TableRow>
+                              {showSubjectCode && <TableCell>Code</TableCell>}
                               <TableCell>Subject</TableCell>
                               <TableCell>Internal</TableCell>
-                              <TableCell>External</TableCell>
-                              <TableCell>Total</TableCell>
-                              <TableCell>Result</TableCell>
+                              {(() => {
+                                const hasReval = Object.values(student.semesters[selectedSem] || {}).some(
+                                  (subj) => subj.rv_result || subj.final_result || subj.is_revaluation
+                                );
+                                return <>
+                                  <TableCell>{hasReval ? 'External (Reval)' : 'External'}</TableCell>
+                                  <TableCell>{hasReval ? 'Total (Reval)' : 'Total'}</TableCell>
+                                  <TableCell>{hasReval ? 'Result (Reval)' : 'Result'}</TableCell>
+                                </>;
+                              })()}
+                              {showDates && <TableCell>Date</TableCell>}
                               {showSgpaCgpa && <TableCell>Credits</TableCell>}
                               {showSgpaCgpa && <TableCell>Grade</TableCell>}
                               {showSgpaCgpa && <TableCell>GP</TableCell>}
@@ -563,82 +646,216 @@ export default function Dashboard() {
                                 );
                               })
                               .map(([code, subj]) => {
-                                const isFail = highlightFail && (subj.result && (subj.result.trim().toUpperCase() === 'F' || subj.result.trim().toLowerCase().includes('fail')));
-                                const gp = showSgpaCgpa ? getGradeAndPoints(subj) : null;
+                                // Aggregate all attempts for this subject across ALL semesters
+                                let allAttempts = [];
+                                const allSems = Object.keys(student.semesters || {});
+                                allSems.forEach(sem => {
+                                  const semSubj = student.semesters[sem]?.[code];
+                                  if (semSubj && semSubj._attempts) {
+                                    semSubj._attempts.forEach(att => {
+                                      allAttempts.push({ ...att, _sem: sem });
+                                    });
+                                  }
+                                });
+                                 // Helper to map exam session to a comparable score (Year + Period)
+                                 const getSessionScore = (att) => {
+                                   const year = parseInt(att.exam_year) || (att.result_date ? parseInt(att.result_date.split('-')[0]) : 0);
+                                   let periodWeight = 0;
+                                   const name = (att.exam_name || '').toUpperCase();
+                                   const month = (att.exam_month || '').toUpperCase();
+                                   if (name.includes('SUMMER') || name.includes('SPECIAL')) periodWeight = 3;
+                                   else if (month.includes('JUNE') || month.includes('JULY')) periodWeight = 2;
+                                   else if (month.includes('DEC') || month.includes('JAN') || month.includes('FEB')) periodWeight = 1;
+                                   return year * 10 + periodWeight;
+                                 };
+
+                                 // Helper to prioritize results WITHIN the same session
+                                 const getTypePriority = (att) => {
+                                   const isMakeup = att.exam_type === 'makeup' || (att.is_revaluation && (att.exam_name || '').toUpperCase().includes('MAKEUP'));
+                                   if (isMakeup) return att.is_revaluation ? 3 : 2;
+                                   return att.is_revaluation ? 1 : 0;
+                                 };
+
+                                 // Sort all attempts by Session chronologically, then by Type priority
+                                 allAttempts.sort((a, b) => {
+                                   const scoreA = getSessionScore(a);
+                                   const scoreB = getSessionScore(b);
+                                   if (scoreA !== scoreB) return scoreA - scoreB;
+                                   const pA = getTypePriority(a);
+                                   const pB = getTypePriority(b);
+                                   if (pA !== pB) return pA - pB;
+                                   return (a.result_date || '').localeCompare(b.result_date || '');
+                                 });
+
+                                 // Find the absolute latest attempt for display
+                                 const latestAttempt = allAttempts[allAttempts.length - 1] || subj;
+                                 
+                                 // Determine the display values using the absolute latest attempt
+                                 const displayExt = latestAttempt.is_revaluation 
+                                   ? (latestAttempt.final_marks || latestAttempt.rv_marks || latestAttempt.external)
+                                   : latestAttempt.external;
+                                 const displayResult = latestAttempt.is_revaluation 
+                                   ? (latestAttempt.final_result || latestAttempt.rv_result || latestAttempt.result)
+                                   : latestAttempt.result;
+                                 const displayInternal = latestAttempt.internal;
+                                 const displayTotal = String((parseInt(displayInternal) || 0) + (parseInt(displayExt) || 0));
+
+                                 const isFail = highlightFail && (displayResult && (displayResult.trim().toUpperCase() === 'F' || displayResult.trim().toLowerCase().includes('fail')));
+                                 const displaySubj = { ...subj, external: displayExt, result: displayResult, total: displayTotal, internal: displayInternal };
+
+                                const gp = showSgpaCgpa ? getGradeAndPoints(displaySubj) : null;
                                 const creditVal = (credits[selectedSem] && credits[selectedSem][code]) ?? '';
                                 const cp = gp && creditVal !== '' ? (parseInt(creditVal) || 0) * gp.points : '';
+                                const isExpanded = expandedMainSubject === code;
+                                const hasMultipleAttempts = allAttempts.length > 1;
                                 return (
-                                  <TableRow
-                                    key={code}
-                                    hover
-                                    sx={{
-                                      ...(isFail ? { backgroundColor: '#ef4444' } : {}),
-                                      '&:hover': {
-                                          backgroundColor: isFail ? '#dc2626' : 'rgba(30,64,175,0.05)',
-                                      },
-                                    }}
-                                  >
-                                    <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>{subj.subject_name}</TableCell>
-                                    <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>{subj.internal}</TableCell>
-                                    <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>{subj.external}</TableCell>
-                                    <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>{subj.total}</TableCell>
-                                    <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>{subj.result}</TableCell>
-                                    {showSgpaCgpa && (
-                                      <TableCell sx={isFail ? { color: '#fff' } : {}}>
-                                        <TextField
-                                          type="number"
-                                          size="small"
-                                          value={creditVal}
-                                          onChange={(e) => handleCreditChange(selectedSem, code, e.target.value)}
-                                          sx={{ width: 60, input: { textAlign: 'center', fontSize: 13, p: '4px' } }}
-                                          inputProps={{ min: 0, max: 20 }}
-                                        />
+                                  <React.Fragment key={code}>
+                                    <TableRow
+                                      onClick={() => hasMultipleAttempts && setExpandedMainSubject(isExpanded ? null : code)}
+                                      sx={{
+                                        ...(isFail ? { backgroundColor: '#ef4444 !important' } : {}),
+                                        cursor: hasMultipleAttempts ? 'pointer' : 'default',
+                                        '&:hover': {
+                                          backgroundColor: isFail ? '#f87171 !important' : 'rgba(30,64,175,0.05)',
+                                        },
+                                      }}
+                                    >
+                                      {showSubjectCode && (
+                                        <TableCell sx={{ fontSize: { xs: 10, sm: 13 }, color: isFail ? '#fff' : '#64748b', fontWeight: isFail ? 700 : 400 }}>
+                                          {code}
+                                        </TableCell>
+                                      )}
+                                      <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>
+                                        {subj.subject_name}
+                                        {hasMultipleAttempts && (
+                                          <span style={{ marginLeft: 6, fontSize: 11, color: isFail ? '#fecaca' : '#1e40af', fontWeight: 700 }}>
+                                            {isExpanded ? '▲' : '▼'} {allAttempts.length} attempts
+                                          </span>
+                                        )}
                                       </TableCell>
-                                    )}
-                                    {showSgpaCgpa && (
-                                      <TableCell sx={{ fontWeight: 600, color: gp?.points === 0 ? '#ef4444' : '#1e40af' }}>
-                                        {gp?.grade}
+                                      <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>{displaySubj.internal}</TableCell>
+                                      {/* External (Reval) */}
+                                      <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>
+                                        {latestAttempt.is_revaluation ? (
+                                          <>
+                                            <span style={{ color: '#1e40af', fontWeight: 600 }}>
+                                              {latestAttempt.final_marks || latestAttempt.rv_marks || displayExt}
+                                            </span>
+                                            {latestAttempt.old_marks && (
+                                              <span style={{ color: '#64748b', marginLeft: 8, fontSize: 13 }}>
+                                                (Old: {latestAttempt.old_marks})
+                                              </span>
+                                            )}
+                                          </>
+                                        ) : (
+                                          displayExt
+                                        )}
                                       </TableCell>
-                                    )}
-                                    {showSgpaCgpa && (
-                                      <TableCell sx={{ fontWeight: 600 }}>{gp?.points}</TableCell>
-                                    )}
-                                    {showSgpaCgpa && (
-                                      <TableCell sx={{ fontWeight: 700 }}>{cp !== '' ? cp : ''}</TableCell>
-                                    )}
-                                  </TableRow>
+                                      {/* Total - use displaySubj for correct makeup/reval total */}
+                                      <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>
+                                        {(() => {
+                                          const total = (parseInt(displayInternal) || 0) + (parseInt(displayExt) || 0);
+                                          const oldTotal = latestAttempt.is_revaluation && latestAttempt.old_marks ? ((parseInt(displayInternal) || 0) + (parseInt(latestAttempt.old_marks) || 0)) : null;
+                                          return (
+                                            <>
+                                              <span style={{ color: '#1e40af', fontWeight: 600 }}>{total}</span>
+                                              {latestAttempt.is_revaluation && latestAttempt.old_marks && (
+                                                <span style={{ color: '#64748b', marginLeft: 8, fontSize: 13 }}>
+                                                  (Old: {oldTotal})
+                                                </span>
+                                              )}
+                                            </>
+                                          );
+                                        })()}
+                                      </TableCell>
+                                      {/* Result (Reval) - show reval result if available, else result */}
+                                      <TableCell sx={isFail ? { color: '#fff', fontWeight: 700 } : {}}>
+                                        {latestAttempt.is_revaluation ? (
+                                          <>
+                                            <span style={{ color: '#1e40af', fontWeight: 600 }}>
+                                              {latestAttempt.final_result || latestAttempt.rv_result || displayResult}
+                                            </span>
+                                            {latestAttempt.old_result && (
+                                              <span style={{ color: '#64748b', marginLeft: 8, fontSize: 13 }}>
+                                                (Old: {latestAttempt.old_result})
+                                              </span>
+                                            )}
+                                          </>
+                                        ) : (
+                                          displayResult
+                                        )}
+                                      </TableCell>
+                                      {showDates && (
+                                        <TableCell sx={{ fontSize: { xs: 10, sm: 13 }, color: '#64748b', ...(isFail ? { color: '#fff' } : {}) }}>
+                                          {subj.result_date || '—'}
+                                        </TableCell>
+                                      )}
+                                      {showSgpaCgpa && (
+                                        <TableCell sx={isFail ? { color: '#fff' } : {}}>
+                                          <TextField
+                                            type="number"
+                                            size="small"
+                                            value={creditVal}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 10)) {
+                                                handleCreditChange(selectedSem, code, val);
+                                              }
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            sx={{ width: 60, input: { textAlign: 'center', fontSize: 13, p: '4px' } }}
+                                            inputProps={{ min: 0, max: 10 }}
+                                          />
+                                        </TableCell>
+                                      )}
+                                      {showSgpaCgpa && (
+                                        <TableCell sx={{ fontWeight: 600, color: gp?.points === 0 ? '#ef4444' : '#1e40af' }}>
+                                          {gp?.grade}
+                                        </TableCell>
+                                      )}
+                                      {showSgpaCgpa && (
+                                        <TableCell sx={{ fontWeight: 600 }}>{gp?.points}</TableCell>
+                                      )}
+                                      {showSgpaCgpa && (
+                                        <TableCell sx={{ fontWeight: 700 }}>{cp !== '' ? cp : ''}</TableCell>
+                                      )}
+                                    </TableRow>
+                                    {/* Expanded: show all attempts for this subject */}
+                                    {isExpanded && allAttempts.map((att, ai) => (
+                                      <TableRow key={ai} sx={{ background: '#fef3c7' }}>
+                                        {showSubjectCode && <TableCell sx={{ fontSize: { xs: 9, sm: 11 }, color: '#a16207' }}>{code}</TableCell>}
+                                        <TableCell sx={{ pl: { xs: 2, sm: 4 }, fontSize: { xs: 10, sm: 12 }, color: '#78350f' }}>
+                                          <div style={{ fontWeight: 700, color: '#92400e' }}>Sem {att._sem} • {att.exam_type || 'attempt'}</div>
+                                          <div style={{ fontSize: 10, color: '#a16207' }}>{att.exam_name || ''}</div>
+                                        </TableCell>
+                                        <TableCell sx={{ fontSize: { xs: 10, sm: 12 } }}>{att.internal}</TableCell>
+                                        <TableCell sx={{ fontSize: { xs: 10, sm: 12 } }}>{att.external || att.rv_marks || att.old_marks}</TableCell>
+                                        <TableCell sx={{ fontSize: { xs: 10, sm: 12 } }}>{att.total || ''}</TableCell>
+                                        <TableCell sx={{
+                                          fontSize: { xs: 10, sm: 12 }, fontWeight: 700,
+                                          color: (att.result || att.rv_result || att.final_result || '').trim().toUpperCase() === 'F' ? '#ef4444' : '#16a34a',
+                                        }}>
+                                          {att.result || att.rv_result || att.final_result}
+                                        </TableCell>
+                                        {showDates && (
+                                          <TableCell sx={{ fontSize: { xs: 9, sm: 11 }, color: '#a16207' }}>
+                                            {att.result_date || '—'}
+                                          </TableCell>
+                                        )}
+                                        {showSgpaCgpa && <TableCell />}
+                                        {showSgpaCgpa && <TableCell />}
+                                        {showSgpaCgpa && <TableCell />}
+                                        {showSgpaCgpa && <TableCell />}
+                                      </TableRow>
+                                    ))}
+                                  </React.Fragment>
                                 );
                               })}
                           </TableBody>
                         </Table>
                       </TableContainer>
 
-                      {/* SGPA Display */}
-                      {showSgpaCgpa && (() => {
-                        const mainEntries = Object.entries(student.semesters[selectedSem] || {})
-                          .filter(([_, subj]) => !previousAttempts.some(prev => prev.subject_name === subj.subject_name));
-                        const semCreds = credits[selectedSem] || {};
-                        let totalCP = 0, totalCr = 0;
-                        mainEntries.forEach(([code, subj]) => {
-                          const cr = parseInt(semCreds[code]) || 0;
-                          const { points } = getGradeAndPoints(subj);
-                          totalCP += cr * points;
-                          totalCr += cr;
-                        });
-                        const sgpa = totalCr > 0 ? (totalCP / totalCr).toFixed(2) : '—';
-                        return (
-                          <Box sx={{ mt: 2, p: 2, background: '#eff6ff', borderRadius: 2, border: '1px solid #bfdbfe' }}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1e40af' }}>
-                              SGPA (Sem {selectedSem}): {sgpa}
-                            </Typography>
-                            {totalCr === 0 && (
-                              <Typography variant="caption" sx={{ color: '#64748b' }}>
-                                Enter credits for each subject above to calculate SGPA.
-                              </Typography>
-                            )}
-                          </Box>
-                        );
-                      })()}
+
                     </Box>
                     {/* Previous Attempts Section */}
                     {previousAttempts.length > 0 && (
@@ -675,51 +892,170 @@ export default function Dashboard() {
                             <TableHead>
                               <TableRow>
                                 <TableCell>Semester</TableCell>
+                                {showSubjectCode && <TableCell>Code</TableCell>}
                                 <TableCell>Subject</TableCell>
                                 <TableCell>Internal</TableCell>
                                 <TableCell>External</TableCell>
                                 <TableCell>Total</TableCell>
                                 <TableCell>Result</TableCell>
+                                {showDates && <TableCell>Date</TableCell>}
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {previousAttempts.map((subj, idx) => (
-                                <TableRow key={subj.subject_name + subj.sem + idx}>
-                                  <TableCell>{subj.sem}</TableCell>
-                                  <TableCell>{subj.subject_name}</TableCell>
-                                  <TableCell>{subj.internal}</TableCell>
-                                  <TableCell>{subj.external}</TableCell>
-                                  <TableCell>{subj.total}</TableCell>
-                                  <TableCell>{subj.result}</TableCell>
-                                </TableRow>
-                              ))}
+                              {previousAttempts.map((subj, idx) => {
+                                // Show regular result (not makeup) in the main row
+                                const regInt = subj._regular_internal || subj.internal;
+                                const regExt = subj._regular_external || subj.external;
+                                const regTotal = subj._regular_total || subj.total;
+                                const regResult = subj._regular_result || subj.result;
+                                const isExpanded = expandedPrevAttempt === idx;
+                                const attempts = subj._attempts || [];
+                                return (
+                                  <React.Fragment key={subj.subject_name + subj.sem + idx}>
+                                    <TableRow
+                                      onClick={() => setExpandedPrevAttempt(isExpanded ? null : idx)}
+                                      sx={{
+                                        cursor: attempts.length > 1 ? 'pointer' : 'default',
+                                        background: isExpanded ? '#fff7ed' : 'inherit',
+                                        '&:hover': { backgroundColor: '#fff1e6' },
+                                      }}
+                                    >
+                                      <TableCell>{subj.sem}</TableCell>
+                                      {showSubjectCode && (
+                                        <TableCell sx={{ fontSize: { xs: 10, sm: 13 }, color: '#64748b' }}>
+                                          {subj.subject_code || ''}
+                                        </TableCell>
+                                      )}
+                                      <TableCell>
+                                        {subj.subject_name}
+                                        {attempts.length > 1 && (
+                                          <span style={{ marginLeft: 6, fontSize: 11, color: '#e65100', fontWeight: 700 }}>
+                                            {isExpanded ? '▲' : '▼'} {attempts.length} attempts
+                                          </span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell>{regInt}</TableCell>
+                                      <TableCell>{regExt}</TableCell>
+                                      <TableCell>{regTotal}</TableCell>
+                                      <TableCell sx={{ color: (regResult || '').trim().toUpperCase() === 'F' ? '#ef4444' : '#16a34a', fontWeight: 700 }}>
+                                        {regResult}
+                                      </TableCell>
+                                      {showDates && (
+                                        <TableCell sx={{ fontSize: { xs: 10, sm: 13 }, color: '#64748b' }}>
+                                          {subj.result_date || (attempts.length > 0 && attempts[0].result_date) || '—'}
+                                        </TableCell>
+                                      )}
+                                    </TableRow>
+                                    {/* Expanded: show all attempts for this subject */}
+                                    {isExpanded && attempts.length > 0 && attempts.map((att, ai) => (
+                                      <TableRow key={ai} sx={{ background: '#fef3c7' }}>
+                                        {showSubjectCode && <TableCell sx={{ fontSize: 11, color: '#a16207' }}>{att.subject_code || ''}</TableCell>}
+                                        <TableCell sx={{ pl: 4, fontSize: 11, color: '#92400e' }}>
+                                          {att.exam_type || 'attempt'}
+                                        </TableCell>
+                                        <TableCell sx={{ fontSize: 11, color: '#78350f' }}>
+                                          {att.exam_name || att.subject_name}
+                                        </TableCell>
+                                        <TableCell sx={{ fontSize: 11 }}>{att.internal}</TableCell>
+                                        <TableCell sx={{ fontSize: 11 }}>{att.external || att.rv_marks || att.old_marks}</TableCell>
+                                        <TableCell sx={{ fontSize: 11 }}>{att.total || ''}</TableCell>
+                                        <TableCell sx={{
+                                          fontSize: 11, fontWeight: 700,
+                                          color: (att.result || att.rv_result || att.final_result || '').trim().toUpperCase() === 'F' ? '#ef4444' : '#16a34a',
+                                        }}>
+                                          {att.result || att.rv_result || att.final_result}
+                                        </TableCell>
+                                        {showDates && (
+                                          <TableCell sx={{ fontSize: 11, color: '#a16207' }}>
+                                            {att.result_date || '—'}
+                                          </TableCell>
+                                        )}
+                                      </TableRow>
+                                    ))}
+                                  </React.Fragment>
+                                );
+                              })}
                             </TableBody>
                           </Table>
                         </TableContainer>
                       </Box>
                     )}
 
+                    {/* SGPA Display relocated below previous attempts */}
+                    {showSgpaCgpa && (() => {
+                      // For SGPA calculation, only count subjects that ORIGINALLY belong to this semester
+                      const semSubjects = Object.entries(globalLatestResults)
+                        .filter(([_, data]) => data.originalSem === selectedSem);
+
+                      const semCreds = credits[selectedSem] || {};
+                      let totalCP = 0, totalRegCr = 0, totalEarnedCr = 0;
+                      semSubjects.forEach(([name, data]) => {
+                        // Find original subject code in this semester to look up credits
+                        const originalEntry = Object.entries(student.semesters[selectedSem] || {})
+                          .find(([_, s]) => s.subject_name === name);
+                        const code = originalEntry ? originalEntry[0] : name;
+
+                        const cr = parseInt(semCreds[code]) || 0;
+                        const { points } = getGradeAndPoints(data.latestSubj);
+                        totalCP += cr * points;
+                        totalRegCr += cr;
+                        if (points > 0) {
+                          totalEarnedCr += cr;
+                        }
+                      });
+                      const sgpa = totalRegCr > 0 ? (totalCP / totalRegCr).toFixed(2) : '—';
+                      return (
+                        <Box sx={{ mt: 2, p: 2, background: '#eff6ff', borderRadius: 2, border: '1px solid #bfdbfe' }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1e40af' }}>
+                            SGPA (Sem {selectedSem}): {sgpa}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: '#64748b' }}>
+                            Credits Earned: {totalEarnedCr} | Total Registered: {totalRegCr}
+                          </Typography>
+                          {totalRegCr === 0 && (
+                            <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
+                              Enter credits for each subject above to calculate SGPA.
+                            </Typography>
+                          )}
+                        </Box>
+                      );
+                    })()}
+
+
                     {/* CGPA Section */}
                     {showSgpaCgpa && student.semesters && (() => {
-                      const allSems = Object.keys(student.semesters);
-                      let grandTotalCP = 0, grandTotalCr = 0;
-                      const semRows = allSems.map(sem => {
+                      const allSems = Object.keys(student.semesters).sort((a, b) => Number(a) - Number(b));
+                      let grandTotalCP = 0, grandTotalEarnedCr = 0;
+                      const semRows = allSems.map((sem) => {
                         const semCreds = credits[sem] || {};
-                        const entries = Object.entries(student.semesters[sem] || {});
-                        let semCP = 0, semCr = 0;
-                        entries.forEach(([code, subj]) => {
+                        // Count subjects that ORIGINALLY belong to this semester
+                        const semSubjects = Object.entries(globalLatestResults)
+                          .filter(([_, data]) => data.originalSem === sem);
+
+                        let semCP = 0, semRegCr = 0, semEarnedCr = 0;
+                        semSubjects.forEach(([name, data]) => {
+                          // Find original subject code in this semester to look up credits
+                          const originalEntry = Object.entries(student.semesters[sem] || {})
+                            .find(([_, s]) => s.subject_name === name);
+                          const code = originalEntry ? originalEntry[0] : name;
+
                           const cr = parseInt(semCreds[code]) || 0;
-                          const { points } = getGradeAndPoints(subj);
+                          const { points } = getGradeAndPoints(data.latestSubj);
                           semCP += cr * points;
-                          semCr += cr;
+                          semRegCr += cr;
+                          if (points > 0) {
+                            semEarnedCr += cr;
+                          }
                         });
                         grandTotalCP += semCP;
-                        grandTotalCr += semCr;
-                        const sgpa = semCr > 0 ? (semCP / semCr).toFixed(2) : '—';
-                        return { sem, semCr, sgpa, semCP };
+                        grandTotalEarnedCr += semEarnedCr;
+                        // SGPA for the row uses REGISTERED credits
+                        const sgpa = semRegCr > 0 ? (semCP / semRegCr).toFixed(2) : '—';
+                        return { sem, semEarnedCr, sgpa, semCP };
                       });
-                      const cgpa = grandTotalCr > 0 ? (grandTotalCP / grandTotalCr).toFixed(2) : '—';
-                      const hasAnyCredits = grandTotalCr > 0;
+                      // CGPA uses total credits EARNED across all semesters
+                      const cgpa = grandTotalEarnedCr > 0 ? (grandTotalCP / grandTotalEarnedCr).toFixed(2) : '—';
+                      const hasAnyCredits = grandTotalEarnedCr > 0;
                       return (
                         <Box mt={4}>
                           <Typography variant="h6" mb={2} sx={{ color: '#1e40af', fontWeight: 700 }}>
@@ -750,16 +1086,16 @@ export default function Dashboard() {
                                     '&:hover': { backgroundColor: 'rgba(30,64,175,0.05)' },
                                   }}>
                                     <TableCell sx={{ fontWeight: r.sem === selectedSem ? 700 : 400 }}>Sem {r.sem}</TableCell>
-                                    <TableCell>{r.semCr > 0 ? r.semCr : '—'}</TableCell>
+                                    <TableCell>{r.semEarnedCr > 0 ? r.semEarnedCr : '0'}</TableCell>
                                     <TableCell sx={{ fontWeight: 600, color: '#1e40af' }}>{r.sgpa}</TableCell>
-                                    <TableCell>{r.semCr > 0 ? r.semCP : '—'}</TableCell>
+                                    <TableCell>{r.semCP > 0 ? r.semCP.toFixed(0) : '0'}</TableCell>
                                   </TableRow>
                                 ))}
                                 <TableRow sx={{ background: '#f0f4f8' }}>
                                   <TableCell sx={{ fontWeight: 700 }}>Total</TableCell>
-                                  <TableCell sx={{ fontWeight: 700 }}>{grandTotalCr > 0 ? grandTotalCr : '—'}</TableCell>
+                                  <TableCell sx={{ fontWeight: 700 }}>{grandTotalEarnedCr > 0 ? grandTotalEarnedCr : '0'}</TableCell>
                                   <TableCell></TableCell>
-                                  <TableCell sx={{ fontWeight: 700 }}>{grandTotalCr > 0 ? grandTotalCP : '—'}</TableCell>
+                                  <TableCell sx={{ fontWeight: 700 }}>{grandTotalEarnedCr > 0 ? grandTotalCP.toFixed(0) : '0'}</TableCell>
                                 </TableRow>
                               </TableBody>
                             </Table>

@@ -13,6 +13,7 @@ import { useState } from "react";
 import Toppers from "./components/Toppers";
 import TeachersCorner from "./components/TeachersCorner";
 import About from "./components/About";
+import logo from "./assets/bldeacet-logo.webp";
 import "./App.css";
 
 function App() {
@@ -82,7 +83,7 @@ function App() {
             placeholder="Password"
             style={{ padding: 10, fontSize: 18, borderRadius: 6, border: "1px solid #ccc" }}
           />
-          <button type="submit" style={{ padding: 10, fontSize: 18, borderRadius: 6, background: "#1e40af", color: "#fff", border: "none", fontWeight: 700 }}>Submit</button>
+          <button type="submit" style={{ padding: '12px', fontSize: 18, borderRadius: 8, background: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)", color: "#fff", border: "none", fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,23,42,0.2)' }}>Submit</button>
           {error && <span style={{ color: "#ef4444" }}>{error}</span>}
         </form>
       </div>
@@ -113,7 +114,7 @@ function App() {
             placeholder="Password"
             style={{ padding: 10, fontSize: 18, borderRadius: 6, border: "1px solid #ccc" }}
           />
-          <button type="submit" style={{ padding: 10, fontSize: 18, borderRadius: 6, background: "#1e40af", color: "#fff", border: "none", fontWeight: 700 }}>Submit</button>
+          <button type="submit" style={{ padding: '12px', fontSize: 18, borderRadius: 8, background: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)", color: "#fff", border: "none", fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,23,42,0.2)' }}>Submit</button>
           {error && <span style={{ color: "#ef4444" }}>{error}</span>}
         </form>
       </div>
@@ -133,30 +134,69 @@ function App() {
       {/* Responsive Nav */}
       <nav>
         {/* Desktop Nav */}
-        <div className="nav-desktop" style={{ display: 'flex', gap: 24, alignItems: 'center', padding: '16px 0', justifyContent: 'center' }}>
-          <Link to="/">Dashboard</Link>
-          <Link to="/toppers">Toppers</Link>
-          <Link to="/teachers-corner">Teachers Corner</Link>
-          <Link to="/students">Admin Corner</Link>
-          <Link to="/about">About</Link>
+        <div className="nav-desktop" style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          padding: '0 60px', 
+          height: '85px',
+          justifyContent: 'space-between', 
+          background: 'linear-gradient(90deg, #0f172a 0%, #1e3a8a 100%)', 
+          boxShadow: '0 4px 25px rgba(0,0,0,0.2)',
+          borderBottom: '1px solid rgba(255,255,255,0.08)'
+        }}>
+          <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <img src={logo} alt="BLDEACET Logo" style={{ height: 60, width: 'auto', filter: 'brightness(1.1)' }} />
+              <div style={{ height: 45, width: '1.5px', background: 'rgba(255,255,255,0.2)' }}></div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontWeight: 900, fontSize: 26, color: '#ffffff', lineHeight: 1, letterSpacing: '-0.02em' }}>BLDEACET</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#38bdf8', letterSpacing: '0.1em', marginTop: 5, textTransform: 'uppercase' }}>Results Portal</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 10, opacity: 0.8, borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: 20 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#cbd5e1', lineHeight: 1.4 }}>V.P. Dr. P.G. Halakatti College of</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#cbd5e1', lineHeight: 1.4 }}>Engineering & Technology, Vijayapura</span>
+            </div>
+          </Link>
+          <div style={{ display: 'flex', gap: 36, alignItems: 'center' }}>
+            <Link to="/" className="nav-link" style={{ textDecoration: 'none', fontWeight: 700, color: '#f8fafc', fontSize: 18, transition: 'all 0.3s' }}>Dashboard</Link>
+            <Link to="/toppers" className="nav-link" style={{ textDecoration: 'none', fontWeight: 700, color: '#f8fafc', fontSize: 18, transition: 'all 0.3s' }}>Toppers</Link>
+            <Link to="/teachers-corner" className="nav-link" style={{ textDecoration: 'none', fontWeight: 700, color: '#f8fafc', fontSize: 18, transition: 'all 0.3s' }}>Teachers Corner</Link>
+            <Link to="/students" className="nav-link" style={{ textDecoration: 'none', fontWeight: 700, color: '#f8fafc', fontSize: 18, transition: 'all 0.3s' }}>Admin Corner</Link>
+            <Link to="/about" className="nav-link" style={{ textDecoration: 'none', fontWeight: 700, color: '#f8fafc', fontSize: 18, transition: 'all 0.3s' }}>About</Link>
+          </div>
         </div>
-        {/* Mobile Nav (Hamburger or Close) */}
+        {/* Mobile Nav Header */}
         <div
           className={`nav-mobile${!menuOpen && !menuBtnVisible ? ' nav-mobile-hide' : ''}`}
           style={{
             position: 'fixed',
-            top: 12,
-            left: 12,
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 65,
+            background: 'linear-gradient(90deg, #0f172a 0%, #1e3a8a 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 20px',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.25)',
             zIndex: 3000,
+            transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            transform: !menuOpen && !menuBtnVisible ? 'translateY(-100%)' : 'translateY(0)',
           }}
         >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <img src={logo} alt="Logo" style={{ height: 40, width: 'auto', filter: 'brightness(1.1)' }} />
+            <span style={{ fontWeight: 900, color: '#ffffff', fontSize: 19, letterSpacing: '-0.02em' }}>BLDEACET</span>
+          </div>
           {!menuOpen ? (
-            <button aria-label="Open menu" style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer' }} onClick={() => setMenuOpen(true)}>
-              <MenuIcon sx={{ fontSize: 36, color: '#fff' }} />
+            <button aria-label="Open menu" style={{ background: 'rgba(255,255,255,0.1)', border: 'none', width: 42, height: 42, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }} onClick={() => setMenuOpen(true)}>
+              <MenuIcon sx={{ fontSize: 28, color: '#ffffff' }} />
             </button>
           ) : (
-            <button aria-label="Close menu" style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer' }} onClick={() => setMenuOpen(false)}>
-              <CloseIcon sx={{ fontSize: 36, color: '#fff' }} />
+            <button aria-label="Close menu" style={{ background: 'rgba(239, 68, 68, 0.2)', border: 'none', width: 42, height: 42, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }} onClick={() => setMenuOpen(false)}>
+              <CloseIcon sx={{ fontSize: 28, color: '#f87171' }} />
             </button>
           )}
         </div>
@@ -184,14 +224,19 @@ function App() {
             pointerEvents: menuOpen ? 'auto' : 'none',
           }}
         >
-          <button aria-label="Close menu" style={{ background: 'none', border: 'none', position: 'absolute', top: 12, left: 12, padding: 0, margin: 0, cursor: 'pointer' }} onClick={() => setMenuOpen(false)}>
+          <button aria-label="Close menu" style={{ background: 'none', border: 'none', position: 'absolute', top: 12, right: 12, padding: 0, margin: 0, cursor: 'pointer' }} onClick={() => setMenuOpen(false)}>
             <CloseIcon sx={{ fontSize: 36, color: '#1e293b' }} />
           </button>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 56 }}>
+          <div style={{ padding: '32px 24px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', borderBottom: '1px solid #f1f5f9', marginBottom: 12 }}>
+            <img src={logo} alt="BLDEACET Logo" style={{ height: 60, width: 'auto', marginBottom: 12 }} />
+            <span style={{ fontWeight: 800, fontSize: 22, color: '#1e40af' }}>BLDEACET</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Results Portal</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <Link to="/" style={{
               color: window.location.pathname === '/' ? '#1e40af' : '#475569',
               background: window.location.pathname === '/' ? '#eff6ff' : 'none',
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: 700,
               padding: '12px 24px',
               borderRadius: 8,
@@ -205,7 +250,7 @@ function App() {
             <Link to="/toppers" style={{
               color: window.location.pathname === '/toppers' ? '#1e40af' : '#475569',
               background: window.location.pathname === '/toppers' ? '#eff6ff' : 'none',
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: 700,
               padding: '12px 24px',
               borderRadius: 8,
@@ -219,7 +264,7 @@ function App() {
             <Link to="/teachers-corner" style={{
               color: window.location.pathname === '/teachers-corner' ? '#1e40af' : '#475569',
               background: window.location.pathname === '/teachers-corner' ? '#eff6ff' : 'none',
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: 700,
               padding: '12px 24px',
               borderRadius: 8,
@@ -233,7 +278,7 @@ function App() {
             <Link to="/students" style={{
               color: window.location.pathname === '/students' ? '#1e40af' : '#475569',
               background: window.location.pathname === '/students' ? '#eff6ff' : 'none',
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: 700,
               padding: '12px 24px',
               borderRadius: 8,
@@ -247,7 +292,7 @@ function App() {
             <Link to="/about" style={{
               color: window.location.pathname === '/about' ? '#1e40af' : '#475569',
               background: window.location.pathname === '/about' ? '#eff6ff' : 'none',
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: 700,
               padding: '12px 24px',
               borderRadius: 8,
@@ -271,14 +316,23 @@ function App() {
         @media (min-width: 901px) {
           .nav-mobile { display: none !important; }
         }
+        @media (max-width: 900px) {
+          .main-content { padding-top: 60px; }
+        }
+        .nav-link:hover {
+          color: #38bdf8 !important;
+          transform: translateY(-2px);
+        }
       `}</style>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/students" element={studentsAuth ? <AllStudents /> : <StudentsPasswordPrompt />} />
-        <Route path="/toppers" element={<Toppers />} />
-        <Route path="/teachers-corner" element={teachersAuth ? <TeachersCorner /> : <TeachersPasswordPrompt />} />
-        <Route path="/about" element={<About />} />
-      </Routes>
+      <main className="main-content">
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/students" element={studentsAuth ? <AllStudents /> : <StudentsPasswordPrompt />} />
+          <Route path="/toppers" element={<Toppers />} />
+          <Route path="/teachers-corner" element={teachersAuth ? <TeachersCorner /> : <TeachersPasswordPrompt />} />
+          <Route path="/about" element={<About />} />
+        </Routes>
+      </main>
 
       {/* Global Footer - only show at page bottom */}
       {footerVisible && (

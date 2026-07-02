@@ -17,7 +17,12 @@ export function normalizeStudents(rawStudents) {
   for (const [usn, studentData] of Object.entries(rawStudents)) {
     if (!studentData) continue;
 
-    const student = { ...studentData };
+    // Filter to include only "BL" college data (e.g., 2BL23cs001)
+    if (!usn || usn.length < 3 || usn.substring(1, 3).toLowerCase() !== 'bl') {
+      continue;
+    }
+
+    const student = { ...studentData, usn: usn.toUpperCase() };
 
     // If semesters is already an object with string keys (old format), pass through
     if (student.semesters && !Array.isArray(student.semesters) && typeof student.semesters === 'object') {

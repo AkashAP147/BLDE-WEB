@@ -8,6 +8,7 @@ import { useLocation } from "react-router-dom";
 import { db } from "../firebase";
 import { ref, onValue } from "firebase/database";
 import { normalizeStudents } from "../normalizeStudents";
+import logo from "../assets/bldeacet-logo.webp";
 import {
   Box,
   Typography,
@@ -27,6 +28,7 @@ import {
   Card,
   CardContent,
   Grid,
+  CircularProgress,
 } from "@mui/material";
 
 export default function Dashboard() {
@@ -37,13 +39,7 @@ export default function Dashboard() {
   const [selectedSem, setSelectedSem] = useState("");
   // Removed toppers state for dashboard
   // For navigation
-  // Only include students of the same college and branch as the current student (if available)
-  function getCollegeCodeFromUsn(usn) {
-    // College code is the first 3 chars (e.g., 2vs, 1me)
-    return usn && usn.length >= 3 ? usn.substring(0, 3).toLowerCase() : '';
-  }
   const currentBranch = student ? student.branch : null;
-  const currentCollege = student ? getCollegeCodeFromUsn(student.usn) : null;
   // Custom USN sorting: regular USNs, then lateral entry for same batch
   function getBatchFromUsnStr(usn) {
     if (!usn || usn.length < 10) return '';
@@ -59,11 +55,7 @@ export default function Dashboard() {
     }
     return '';
   }
-  // Filter by college and branch, then sort: regular USNs (num < 400) ascending, then lateral (num >= 400) for same batch
   let usnList = Object.keys(students);
-  if (currentCollege) {
-    usnList = usnList.filter(k => getCollegeCodeFromUsn(k) === currentCollege);
-  }
   if (currentBranch) {
     usnList = usnList.filter(k => students[k].branch === currentBranch);
   }
@@ -156,7 +148,11 @@ export default function Dashboard() {
     return () => window.removeEventListener('keydown', handleArrowNav);
   }, [handleArrowNav]);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return !!params.get("usn");
+  });
+  const pendingFetchRef = useRef(null);
   const resultRef = useRef(null);
   const [highlightFail, setHighlightFail] = useState(true);
   const [showSgpaCgpa, setShowSgpaCgpa] = useState(false);
@@ -170,8 +166,24 @@ export default function Dashboard() {
   useEffect(() => {
     const studentsRef = ref(db, "students");
     return onValue(studentsRef, (snapshot) => {
-      setStudents(normalizeStudents(snapshot.val() || {}));
-      setLoading(false);
+      const data = normalizeStudents(snapshot.val() || {});
+      setStudents(data);
+      if (pendingFetchRef.current) {
+        const usn = pendingFetchRef.current;
+        pendingFetchRef.current = null;
+        const usnKey = Object.keys(data).find(
+          (k) => k.toLowerCase() === usn.toLowerCase()
+        );
+        if (usnKey) {
+          setStudent({ usn: usnKey, ...data[usnKey] });
+          setSelectedSem("");
+          setError("");
+        } else {
+          setStudent(null);
+          setError("No student found for this USN.");
+        }
+        setLoading(false);
+      }
     });
   }, []);
 
@@ -187,18 +199,27 @@ export default function Dashboard() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const usnParam = params.get("usn");
-    if (usnParam && students && Object.keys(students).length > 0) {
-      const usnKey = Object.keys(students).find(
-        (k) => k.toLowerCase() === usnParam.toLowerCase()
-      );
-      if (usnKey) {
-        setStudent({ usn: usnKey, ...students[usnKey] });
-        setUsnInput(usnKey);
-        setSelectedSem("");
-        setError("");
+    if (usnParam) {
+      if (students && Object.keys(students).length > 0) {
+        setLoading(true);
+        const timer = setTimeout(() => {
+          const usnKey = Object.keys(students).find(
+            (k) => k.toLowerCase() === usnParam.toLowerCase()
+          );
+          if (usnKey) {
+            setStudent({ usn: usnKey, ...students[usnKey] });
+            setUsnInput(usnKey);
+            setSelectedSem("");
+            setError("");
+          } else {
+            setStudent(null);
+            setError("No student found for this USN.");
+          }
+          setLoading(false);
+        }, 400);
+        return () => clearTimeout(timer);
       } else {
-        setStudent(null);
-        setError("No student found for this USN.");
+        setLoading(true);
       }
     }
     // eslint-disable-next-line
@@ -211,17 +232,30 @@ export default function Dashboard() {
       return;
     }
 
-    const usnKey = Object.keys(students).find(
-      (k) => k.toLowerCase() === usn.toLowerCase()
-    );
+    setLoading(true);
+    setError("");
+    setStudent(null);
 
-    if (usnKey) {
-      setStudent({ usn: usnKey, ...students[usnKey] });
-      setSelectedSem("");
-      setError("");
+    const performLookup = () => {
+      const usnKey = Object.keys(students).find(
+        (k) => k.toLowerCase() === usn.toLowerCase()
+      );
+
+      if (usnKey) {
+        setStudent({ usn: usnKey, ...students[usnKey] });
+        setSelectedSem("");
+        setError("");
+      } else {
+        setStudent(null);
+        setError("No student found for this USN.");
+      }
+      setLoading(false);
+    };
+
+    if (students && Object.keys(students).length > 0) {
+      setTimeout(performLookup, 400);
     } else {
-      setStudent(null);
-      setError("No student found for this USN.");
+      pendingFetchRef.current = usn;
     }
   };
 
@@ -300,6 +334,8 @@ export default function Dashboard() {
     }));
   }
 
+
+
   return (
     <Box
       sx={{
@@ -323,18 +359,23 @@ export default function Dashboard() {
       >
         <CardContent sx={{ px: { xs: 0.5, sm: 2 }, py: { xs: 1, sm: 2 } }}>
           {/* Heading */}
-          <Typography
-            variant="h4"
-            align="center"
-            sx={{
-              fontWeight: 800,
-              color: '#1e40af',
-              mb: { xs: 2, sm: 5 },
-              fontSize: { xs: '1.5rem', sm: '2.5rem' },
-            }}
-          >
-            VTU Results Dashboard
-          </Typography>
+          <Box display="flex" flexDirection="column" alignItems="center" sx={{ mb: { xs: 3, sm: 6 } }}>
+            <img src={logo} alt="BLDEACET Logo" style={{ height: 100, width: 'auto', marginBottom: 16 }} />
+            <Typography
+              variant="h4"
+              align="center"
+              sx={{
+                fontWeight: 900,
+                color: '#0f172a',
+                fontSize: { xs: '1.75rem', sm: '2.75rem' },
+                letterSpacing: -0.5,
+                lineHeight: 1.1
+              }}
+            >
+              VTU Results Portal
+            </Typography>
+            <Typography variant="body1" sx={{ color: '#1e3a8a', mt: 1, fontWeight: 700, opacity: 0.8 }}>BLDE ASSOCIATION'S COLLEGE OF ENGINEERING & TECHNOLOGY</Typography>
+          </Box>
 
           {/* Search Section */}
           <Grid container spacing={1.5} justifyContent="center" sx={{ mb: { xs: 1, sm: 0 } }}>
@@ -365,9 +406,12 @@ export default function Dashboard() {
                   height: { xs: 38, sm: 56 },
                   fontWeight: 700,
                   fontSize: { xs: 13, sm: 16 },
-                  background: 'linear-gradient(to right, #1e40af, #0ea5e9)',
+                  background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)',
+                  boxShadow: '0 4px 12px rgba(15,23,42,0.2)',
                   '&:hover': {
-                    transform: 'scale(1.03)',
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 6px 16px rgba(15,23,42,0.3)',
+                    background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
                   },
                 }}
               >
@@ -383,18 +427,27 @@ export default function Dashboard() {
             </Typography>
           )}
 
-          {/* Default Message */}
-          {!student && !error && (
-            <Typography
-              align="center"
-              sx={{ color: "#64748b", mt: 4 }}
-            >
-              Enter a valid USN to view student details.
-            </Typography>
-          )}
+          {loading ? (
+            <Box p={2} display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="30vh">
+              <CircularProgress size={50} thickness={5} sx={{ color: '#1e40af', mb: 2 }} />
+              <Typography variant="h6" sx={{ color: '#1e40af', fontSize: { xs: 15, sm: 18 } }}>
+                Loading student details...
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              {/* Default Message */}
+              {!student && !error && (
+                <Typography
+                  align="center"
+                  sx={{ color: "#64748b", mt: 4 }}
+                >
+                  Enter a valid USN to view student details.
+                </Typography>
+              )}
 
-          {/* Student Info & Results */}
-          {student && (
+              {/* Student Info & Results */}
+              {student && (
             <Box mt={5}>
               <Typography
                 variant="h6"
@@ -437,7 +490,7 @@ export default function Dashboard() {
                         minWidth: { xs: 70, sm: 100 },
                         fontWeight: 700,
                         borderRadius: 2,
-                        background: selectedSem === s ? '#1e40af' : undefined,
+                        background: selectedSem === s ? 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)' : undefined,
                         fontSize: { xs: 12, sm: 16 },
                         px: { xs: 0.5, sm: 2 },
                         py: { xs: 0.2, sm: 1 },
@@ -507,14 +560,14 @@ export default function Dashboard() {
                       <Box mb={2} sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                         <Button
                           variant={highlightFail ? 'contained' : 'outlined'}
-                          sx={{ background: highlightFail ? '#1e40af' : undefined, fontWeight: 700, borderRadius: 2 }}
+                          sx={{ background: highlightFail ? 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)' : undefined, fontWeight: 700, borderRadius: 2 }}
                           onClick={() => setHighlightFail(v => !v)}
                         >
                           {highlightFail ? 'Hide' : 'Show'} Failed Subject Highlight
                         </Button>
                         <Button
                           variant={showSgpaCgpa ? 'contained' : 'outlined'}
-                          sx={{ background: showSgpaCgpa ? '#0ea5e9' : undefined, fontWeight: 700, borderRadius: 2 }}
+                          sx={{ background: showSgpaCgpa ? 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)' : undefined, fontWeight: 700, borderRadius: 2 }}
                           onClick={() => {
                             const newVal = !showSgpaCgpa;
                             setShowSgpaCgpa(newVal);
@@ -541,14 +594,14 @@ export default function Dashboard() {
                         </Button>
                         <Button
                           variant={showDates ? 'contained' : 'outlined'}
-                          sx={{ background: showDates ? '#7c3aed' : undefined, fontWeight: 700, borderRadius: 2 }}
+                          sx={{ background: showDates ? 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)' : undefined, fontWeight: 700, borderRadius: 2 }}
                           onClick={() => setShowDates(v => !v)}
                         >
                           {showDates ? 'Hide' : 'Show'} Result Dates
                         </Button>
                         <Button
                           variant={showSubjectCode ? 'contained' : 'outlined'}
-                          sx={{ background: showSubjectCode ? '#16a34a' : undefined, fontWeight: 700, borderRadius: 2 }}
+                          sx={{ background: showSubjectCode ? 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)' : undefined, fontWeight: 700, borderRadius: 2 }}
                           onClick={() => setShowSubjectCode(v => !v)}
                         >
                           {showSubjectCode ? 'Hide' : 'Show'} Subject Code
@@ -1160,6 +1213,8 @@ export default function Dashboard() {
                 <ArrowUpwardIcon fontSize="large" />
               </Button>
             </Box>
+          )}
+            </>
           )}
         </CardContent>
       </Card>

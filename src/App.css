@@ -1,13 +1,14 @@
 /* NAVBAR */
 nav {
   width: 100%;
-  display: flex;
-  justify-content: center;
-  gap: 40px;
-  padding: 24px 0;
-  background: #1e40af;
-  border-bottom: 1px solid #1e3a8a;
-  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.15);
+  position: sticky;
+  top: 0;
+  z-index: 2000;
+}
+
+nav a {
+  text-decoration: none;
+  transition: all 0.2s ease;
 }
 
 nav a {
@@ -36,8 +37,9 @@ nav a:hover {
 /* HEADINGS */
 .MuiTypography-h3,
 .MuiTypography-h4 {
-  font-weight: 800 !important;
-  margin-bottom: 20px !important;
+  font-weight: 900 !important;
+  color: #0f172a !important;
+  margin-bottom: 24px !important;
 }
 
 /* TABLE */
@@ -48,9 +50,12 @@ nav a:hover {
 }
 
 .MuiTableCell-head {
-  background: #1e40af !important;
+  background: #0f172a !important;
   color: #ffffff !important;
   font-weight: 700 !important;
+  text-transform: uppercase !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.05em !important;
 }
 
 .MuiTableCell-body {
@@ -64,11 +69,27 @@ nav a:hover {
 
 /* BUTTON */
 .MuiButton-containedPrimary {
-  background: #1e40af !important;
-  border-radius: 8px !important;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%) !important;
+  border-radius: 10px !important;
   padding: 10px 24px !important;
+  text-transform: none !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.5px !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25) !important;
+  transition: all 0.3s ease !important;
 }
 
 .MuiButton-containedPrimary:hover {
-  background: #1e3a8a !important;
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.35) !important;
+}
+
+.MuiTableCell-head {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.05em !important;
 }

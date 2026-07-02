@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "vtu-result-blde",
     "public": "dist",
     "ignore": [
       "firebase.json",

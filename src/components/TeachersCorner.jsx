@@ -51,7 +51,7 @@ function getSubjectMarks(subj, revalMode) {
 }
 import React, { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
-import { Box, Typography, FormControl, InputLabel, Select, MenuItem, Card } from "@mui/material";
+import { Box, Typography, FormControl, InputLabel, Select, MenuItem, Card, CircularProgress } from "@mui/material";
 import { Pie, Bar } from "react-chartjs-2";
 import { Chart, ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from "chart.js";
 Chart.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
@@ -85,7 +85,6 @@ const TeachersCorner = () => {
     const semKey = String(sem);
     const filtered = data.filter(
       (s) =>
-        (!college || s.collegeCode === college) &&
         (branch ? s.branch === branch : true) &&
         (batch ? String(s.batch) === String(batch) : true) &&
         s.semesters && s.semesters[semKey]
@@ -360,12 +359,8 @@ const TeachersCorner = () => {
     ];
     const wsRef = XLSX.utils.json_to_sheet(refRows);
     // === Result Analysis Sheet (structured like university report) ===
-    // Get college display name
-    let collegeName = 'All Colleges';
-    if (college) {
-      const found = allColleges.find(c => c.code === college);
-      collegeName = (found && found.name) ? found.name : college;
-    }
+    // College name fixed to BLDE
+    let collegeName = 'BLDEAS COLLEGE OF ENGINEERING';
 
     // Compute overall summary stats (only for main subjects, excluding backlog)
     let totalStudentsCount = filtered.length;
@@ -548,262 +543,35 @@ const TeachersCorner = () => {
     XLSX.utils.book_append_sheet(wb, wsRef, "Subject Reference");
 
     // Download file
-    // Add college name or code to the file name
-    let collegeLabel = 'all';
-    if (college) {
-      // Try to get the college name from allColleges, fallback to code
-      const found = allColleges.find(c => c.code === college);
-      if (found && found.name) {
-        // Replace spaces and special chars with underscores for filename safety
-        collegeLabel = found.name.replace(/[^a-zA-Z0-9]/g, '_');
-      } else {
-        collegeLabel = college;
-      }
-    }
-    XLSX.writeFile(wb, `results_sem${semKey}_${collegeLabel}_${branch || 'all'}_${batch || 'all'}.xlsx`);
+    XLSX.writeFile(wb, `results_sem${semKey}_${branch || 'all'}_${batch || 'all'}.xlsx`);
   };
   const [sem, setSem] = useState(1);
   const [branch, setBranch] = useState("");
   const [batch, setBatch] = useState("");
-  const [college, setCollege] = useState("");
-  const [allColleges, setAllColleges] = useState([]);
   const [data, setData] = useState([]);
   const [passFailStats, setPassFailStats] = useState({ pass: 0, fail: 0 });
   const [batches, setBatches] = useState([]);
   const [branches, setBranches] = useState([]);
-
-  // College code dictionary (shortened, add more as needed)
-  const college_code_dict = {
-      "ACHARAYA INSTITUTE OF TECHNOLOGY": "1AY",
-      "A.P.S COLLEGE OF ENGINEERING.": "1AP",
-      "AMC ENGINEERING COLLEGE": "1AM",
-      "AMRUTHA INSTITUTE OF ENGINEERING AND MGMT. SCIENCES": "1AR",
-      "ATRIA INSTITUTE OF TECHNOLOGY": "1AT",
-      "BENGALURU COLLEGE OF ENGINEERING AND TECHNOLOGY": "1BC",
-      "BENGALURU INSTITUTE OF TECHNOLOGY": "1BI",
-      "BRINDAVAN COLLEGE OF ENGG": "1BO",
-      "C.M.R INSTITUTE OF TECHNOLOGY": "1CR",
-      "CAMBRIDGE INSTITUTE OF TECHNOLOGY": "1CD",
-      "CHANNA BASAVESHWARA INSTITUTE OF TECHNOLOGY": "1CG",
-      "CITY ENGINEERING COLLEGE": "1CE",
-      "DON BOSCO INSTITUTE OF TECHNOLOGY": "1DB",
-      "DR. T THIMAIAH INSTITUTE OF TECHNOLOGY": "1GV",
-      "EAST point COLLEGE OF ENGINEERING AND TECHNOLOGY": "1EP",
-      "EAST WEST INSTITUTE OF TECHNOLOGY": "1EW",
-      "GHOUSIA COLLEGE OF ENGINEERING": "1GC",
-      "GOVERNMENT S.K.S.J.T. INSTITUTE OF TECHNOLOGY": "1SK",
-      "GOVERNMENT TOOL ROOM AND TRAINING CENTRE": "1GT",
-      "GOVT. ENGINEERING COLLEGE RAMNAGAR": "1GG",
-      "HKBK COLLEGE OF ENGINEERING": "1HK",
-      "HMS INSTITUTE OF TECHNOLOGY": "1HM",
-      "IMPACT COLLEGE OF ENGINEERING": "1IC",
-      "JNANA VIKAS INSTITUTE OF TENCNOLOGY": "1JV",
-      "JSS ACADEMY OF TECHNICIAL EDUCATION": "1JS",
-      "K.S.INSTITUTE OF TECHNOLOGY": "1KS",
-      "KALPATARU INSTITUTE OF TECHNOLOGY": "1KI",
-      "KNS INSTITUTE OF TECHNOLOGY": "1KN",
-      "M.S.ENGINEERING COLLEGE": "1ME",
-      "OXFORD COLLEGE OF ENGINEERING": "1OX",
-      "R R INSTITUTE OF TECHNOLOGY": "1RI",
-      "R.L.JALAPPA INSTITUTE OF TECHNOLOGY": "1RL",
-      "RAJARAJESWARI COLLEGE OF ENGINEERING": "1RR",
-      "RAJIV GANDHI INSTITUTE OF TECHNOLOGY": "1RG",
-      "RNS INSTITUTE OF TECHNOLOGY": "1RN",
-      "S.J.C INSTITUTE OF TECHNOLOGY": "1SJ",
-      "SAI VIDYA INSTITUTE OF TECHNOLOGY": "1VA",
-      "SAMBHRAM INSTITUTE OF TECHNOLOGY": "1ST",
-      "SAPTHAGIRI COLLEGE OF ENGINEERING": "1SG",
-      "SEA COLLEGE OF ENGINEERING AND TECHNOLOGY": "1SP",
-      "SRI SAIRAM COLLEGE OF ENGINEERING": "1SB",
-      "SHIRDEVI INSTITUTE OF ENGINEERING AND TECHNOLOGY": "1SV",
-      "SIR M. VISVESVARAYA INSTITUTE OF TECHNOLOGY": "1MV",
-      "SJB INSTITUTE OF TECHNOLOGY": "1JB",
-      "SRI KRISHNA INSTITUTE OF TECHNOLOGY": "1KT",
-      "SRI REVANASIDDESHWARA INSTITUTE OF TECHNOLOGY": "1RC",
-      "SRI VENKATESHWARA COLLEGE OF ENGINEERING": "1VE",
-      "T. JOHN INSTITUTE OF TECHNOLOGY": "1TJ",
-      "VEMANA INSTITUTE OF TECHNOLOGY": "1VI",
-      "VIVEKANANDA INSTITUTE OF TECHNOLOGY": "1VK",
-      "ACHARYS NRV SCHOOL OF ARCHITECTURE": "1AA",
-      "ACS COLLEGE OF ENGINEERING": "1AH",
-      "AKSHAYA INSTITUTE OF TECHNOLOGY": "1AK",
-      "C BYEREGOWDA INSTITUTE OF TECHNOLOGY": "1CK",
-      "VIJAYA VITTALA INSTITUTE OF TECHNOLOGY": "1VJ",
-      "SHASHIB COLLEGE OF ENGINEERING": "1HS",
-      "SAMPOORNA INSTITUTE OF TECHNOLOGY RESEARCH": "1SZ",
-      "K.S SCHOOL OF ENGG & MGMT": "1KG",
-      "GOPALAN COLLEGE OF ENGINEERING MANAGEMENT": "1GD",
-      "BENGALURU TECHNOLOGICAL INSTITUTE": "1BH",
-      "JYOTHY INSTITUTE OF TECHNOLOGY": "1JT",
-      "DAYANANDA SAGAR ACADEMY OF TECHNOLOGY AND MGMT.": "1DT",
-      "CAMBRIDGE INSITUTE OF TECHNOLOGY NORTH CAMPUS BANGALORE": "1AJ",
-      "DAYANAND SAGAR SCHOOL OF ARCHITECTURE": "1DC",
-      "IMPACT SCHOOL OF ARCHITECTURE": "1IS",
-      "R V COLLEGE OF ARCHITECTURE": "1RW",
-      "BMS SCHOOL OF ARCHITECTURE": "1BQ",
-      "S J B School of Arch. & Planning": "1JA",
-      "GOPALAN SCHOOL OF ARCHITECTURE & PLANNING": "1GO",
-      "R.R. SCHOOL OF ARCHITECTURE": "1RR",
-      "ADITHYA ACADEMY OF ARCHITECTURE & DESGIN": "1AN",
-      "BGS SCHOOL OF ARCHITECTURE & PLANNING": "1PC",
-      "K S SCHOOL OF ARCHITECTURE": "1KF",
-      "EAST WEST COLLEGE OF ENGG": "1EE",
-      "SRI VINAYAKA INSTITUTE OF TECHNOLOGY": "1VB",
-      "Sir. M. V. School of Architecture": "1IV",
-      "Nitte School of Architecture": "1NS",
-      "HMS School of Architecture": "1IT",
-      "Brindavan College of Architecture": "1IE",
-      "BMS College of Architecture": "1CF",
-      "OXFORD SCHOOL OF ARCHITECTURE": "1OQ",
-      "RNS SCHOOL OF ARCHITECTURE": "1RQ",
-      "SRI BASAVESHWAR INSTITUTE OF TECHNOLOGY": "1SW",
-      "R V INSTITUTE OF TECHNOLOGY AND MGMT": "1RF",
-      "EAST WEST SCHOOL OF ARCHITECTURE": "1WS",
-      "BGS College of Engineering & Technology": "1",
-      "Aditya College of Engineering & Technology": "1",
-      "Akash Institute of Engineering & Technology": "1",
-      "Ghousia Institute of Technology for Women": "1",
-      "ANJUMAN  INSTITUTE OF TECHNOLOGY & MANAGEMENT": "2AB",
-      "BLDEAS COLLEGE OF ENGINEERING": "2BL",
-      "GOVT. ENGINEERING COLLEGE HAVERI": "2GO",
-      "HIRASUGAR INSTITUTE OF TECHNOLOGY": "2HN",
-      "KLE COLLEGE OF ENG. AND TECHNOLOGY CHIKODI": "2KD",
-      "KLE INSTITUTE OF TECH HUBLI": "2KE",
-      "KLE Dr M. S. SHESHGIRI COLLEGE OF ENGINEERING AND TECHNOLOGY": "2KL",
-      "MALIK SANDAL INSTITUTE OF ART AND ARCHITECTURE": "2MB",
-      "MARATHA MANDALS ENGINEERING COLLEGE": "2MM",
-      "RURAL ENGINEERING COLLEGE, HULKOTI": "2RH",
-      "S G BALEKUNDRI INST. OF TECH": "2BU",
-      "S.T.J. INSTITUTE OF TECHNOLOGY": "2SR",
-      "SECAB INSTITUTE OF ENGINEERING AND TECHNOLOGY": "2SA",
-      "SMT. KAMALA AND SRI VENKAPPA M. AGADI COLLEGE OF ENGINEERING AND TECHNOLOGY": "2KA",
-      "SRI TONTADARAYA COLLEGE OF ENGINEERING": "2TG",
-      "VISHWANATHARAO DESHPANDE INSTITUTE OF TECHNOLOGY, HALIYAL": "2VD",
-      "GOVT. ENGINEERING COLLEGE HUVINHADAGALI": "2GB",
-      "GOVERNMENT ENGINEERING COLLEGE KARWAR": "2GP",
-      "ANGADI INSTITUTE OF TECHNOLOGY AND MGMT.": "2AG",
-      "JAIN COLLEGE OF ENGINEERING": "2JI",
-      "V S M’S INSTITUTE OF TECHNOLOGY": "2VS",
-      "AGM RURAL COLLEGE OF ENGINEERING & TECHNOLOGY": "2AV",
-      "GRIJABAI SAIL INSTITUTE OF TECHNOLOGY KARWAR": "2GJ",
-      "BILURU GURUBASAVA MAHASWAMIJI INSTITUTE OF TECHNOLOGY": "2LB",
-      "BASAVA ENGG SCHOOL OF TECHNOLOGY ZALAKI": "2VL",
-      "JAIN COLLEGE OF ENGG HUBBALLI": "2IH",
-      "GOVERNMENT ENGINEERING COLLEGE, TALAKAL": "2LG",
-      "ANGADI SCHOOL OF ARCHITECTURE BELAGAVI": "2KF",
-      "JAIN COLLEGE OF ENGINEERING & RESEARCH BELAGAVI": "2JR",
-      "Govt.Engineering College,Ron Road": "2",
-      "BASAVAKALYAN ENGINEERING COLLEGE": "3BK",
-      "GOVT. ENGINEERING COLLEGE RAICHUR": "3GU",
-      "GURU NANAK DEV ENGINEERING COLLEGE": "3GN",
-      "K.C.T. ENGINEERING COLLEGE": "3KC",
-      "KHAJA BANDA NAWAZ COLLEGE OF ENGINEERING": "3KB",
-      "NAVODAYA INSTITUTE OF TECHNOLOGY": "3NA",
-      "PROUDADEVARAYA INSTITUTE OF TECHNOLOGY": "3PG",
-      "RAO BAHADDUR Y MAHABALESHWARAPPA ENGG COLLEGE": "3VC",
-      "BHEEMANNA KHANDRE INSTITUTE OF TECHNOLOGY, BHALKI": "3RB",
-      "SLN COLLEGE OF ENGINEERING": "3SL",
-      "VEERAPPA NISTY ENGINEERING COLLEGE": "3VN",
-      "LINGARAJ APPA ENGINEERING COLLEGE": "3LA",
-      "GODUTAI ENGINEERING COLLEGE FOR WOMEN": "3GF",
-      "SHETTY INSTITUTE OF TECHNOLOGY": "3TS",
-      "GOVERNMENT ENGINEERING COLLEGE,GANGAVATI": "3NG",
-      "GOVERNMENT ENGINEERING COLLEGE,BIDAR": "3NG",
-      "Poojya Dr. Shivakumar Swamiji School of Architecture Kalaburagi": "3NG",
-      "ADICHUNCHANAGIRI INSTITUTE OF TECHNOLOGY": "4AI",
-      "ALVAS INST. OF ENGG. AND TECHNOLOGY": "4AL",
-      "BAHUBALI COLLEGE OF ENGINEERING": "4BB",
-      "BAPUJI INSTITUTE OF ENGINEERING AND TECHNOLOGY": "4BD",
-      "BEARYS INSTITUTE OF TECHNOLOGY": "4BP",
-      "CANARA ENGINEERING COLLEGE": "4CB",
-      "COORG INSTITUTE OF TECHNOLOGY": "4CI",
-      "YENEPOYA INSTITUTE OF TECHNOLOGY": "4DM",
-      "GM.INSTITUTE OF TECHONOLOGY": "4GM",
-      "GOVT. ENGINEERING COLLEGE CHAMARAJANAGARA": "4GE",
-      "GOVT. ENGINEERING COLLEGE HASSAN": "4GH",
-      "GOVT. ENGINEERING COLLEGE KUSHAL NAGAR": "4GL",
-      "GOVT. ENGINEERING COLLEGE MANDYA": "4GK",
-      "GOVT. TOOL ROOM AND TRAINING CENTRE": "4GR",
-      "GSSS INSTITUTE OF ENGINEERING AND TECHNOLOGY FOR WOMEN": "4GW",
-      "JAWAHARLAL NEHRU NATIONAL COLLEGE OF ENGINERING": "4JN",
-      "K.V.G. COLLEGE OF ENGINEERING": "4KV",
-      "KARAVALI INSTITUTE OF TECHNOLOGY": "4KM",
-      "MAHARAJA INSTITUTE OF TECHNOLOGY MYSORE": "4MH",
-      "MANGALORE INSTITUTE OF TECHNOLOGY AND ENGINEERING": "4MT",
-      "MOODLAKATTE INSTITUTE OF TECHONOLOGY": "4MK",
-      "NIE INST. OF TECHNOLOGY": "4NN",
-      "P.A.COLLEGE OF ENGINEERING": "4PA",
-      "PES INSITUTE OF TECHNOLOGY AND MGMT.": "4PM",
-      "RAJEEV INST. OF TECHNOLOGY": "4RA",
-      "SHREE DEVI INSTITUTE OF TECHNOLOGY": "4SH",
-      "SJM INSTITUTE OF TECHNOLOGY": "4SM",
-      "SRI DHARMASTHAL MANJUNATHESHWAR INSTITUTE OF TECHNOLOGY": "4SU",
-      "SRI JAYACHAMRAJENDRA COLLEGE OFF ENGG. EVENING": "4JE",
-      "SRINIVAS INSTITUTE OF TECHNOLOGY": "4SN",
-      "VIDYA VIKAS INSTITUTE OF ENGINEERING AND TECHNOLOGY": "4VM",
-      "VIVEKANANDA COLLEGE OF ENGINEERING AND TECHNOLOGY": "4VP",
-      "NAVKIS COLLEGE OF ENGINEERING HASSAN": "4YG",
-      "SHRI MADHWA VADIRAJA INSTITUTE OF TECHNOLOGY & MANAGEMENT": "4MW",
-      "ACADEMY FOR TECHNICAL AND MANAGEMENT EXCELLENCE": "4AD",
-      "UBDT ENGINEERING  COLLEGE DAVANAGERE ( Constituent College of VTU )": "4UB",
-      "G MADEGOWDA INSTITUTE OF TECHNOLOGY": "4MG",
-      "JAIN INSTITUTE OF TECHNOLOGY": "4JD",
-      "MANGALORE MARINE COLLEGE & TECHNOLOGY": "4MR",
-      "CAUVERY INSTITUTE OF TECHNOLOGY": "4CA",
-      "MYSORE SCHOOL OF ARCHITECTURE": "4MA",
-      "BEARYS ENVIRONMENT ARCHITECTURE DESIGN SCHOOL MANGALORE": "4ED",
-      "MYSORE COLLEGE OF ENGINEERING AND MANAGEMENT": "4MO",
-      "MYSURU ROYAL INSTITUTE OF TECHNOLOGY": "4MU",
-      "WADIYAR CENTRE FOR ARCHITECTURE": "4CM",
-      "Maharaja Institute of Technology": "4MN",
-      "A. J. Institute of Engineering": "4JK",
-      "GOVERNMENT ENGINEERING COLLEGE,MOSALE HOSAHALLI": "4HG",
-    };
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch all students data
     const studentsRef = ref(db, "students");
     onValue(studentsRef, (snapshot) => {
       const val = normalizeStudents(snapshot.val() || {});
-      // Map each student object to include USN from the key if missing, and add collegeCode
-      const arr = Object.entries(val).map(([usn, s]) => {
-        const collegeCode = usn && usn.length >= 3 ? usn.substring(0, 3).toUpperCase() : "";
-        return { usn: s.usn || usn, ...s, collegeCode };
-      });
+      const arr = Object.values(val);
       setData(arr);
-      // Extract unique college codes from USN
-      const collegeSet = new Set();
-      Object.keys(val).forEach(usn => {
-        if (usn && usn.length >= 3) {
-          collegeSet.add(usn.substring(0, 3).toUpperCase());
-        }
-      });
-      // Map code to name for only available colleges
-      const codeToName = {};
-      Object.entries(college_code_dict).forEach(([name, code]) => {
-        if (collegeSet.has(code)) {
-          codeToName[code] = name;
-        }
-      });
-      // If a code is present in data but not in dict, show code as name
-      collegeSet.forEach(code => {
-        if (!codeToName[code]) codeToName[code] = code;
-      });
-      // Sort by name
-      const sortedColleges = Array.from(collegeSet).map(code => ({ code, name: codeToName[code] })).sort((a, b) => a.name.localeCompare(b.name));
-      setAllColleges(sortedColleges);
-      // Extract unique batches and branches (sort for dropdown, filtered by college)
-      setBatches([...new Set(arr.filter(s => !college || s.collegeCode === college).map((s) => String(s.batch)))].sort());
-      setBranches([...new Set(arr.filter(s => !college || s.collegeCode === college).map((s) => s.branch))].sort());
+      // Extract unique batches and branches
+      setBatches([...new Set(arr.map((s) => String(s.batch)))].sort());
+      setBranches([...new Set(arr.map((s) => s.branch))].sort());
+      setLoading(false);
     });
-  }, [college]);
+  }, []);
 
   useEffect(() => {
     // Calculate pass/fail for selected sem, branch, batch, college, and revalMode
     const semKey = String(sem);
     const filtered = data.filter(
       (s) =>
-        (!college || s.collegeCode === college) &&
         (branch ? s.branch === branch : true) &&
         (batch ? String(s.batch) === String(batch) : true) &&
         s.semesters && s.semesters[semKey]
@@ -850,7 +618,7 @@ const TeachersCorner = () => {
       }
     });
     setPassFailStats({ pass, fail });
-  }, [sem, branch, batch, college, data, revalMode]);
+  }, [sem, branch, batch, data, revalMode]);
 
   const pieData = {
     labels: ["Pass", "Fail"],
@@ -872,7 +640,6 @@ const TeachersCorner = () => {
     const semKey = String(sem);
     const filtered = data.filter(
       (s) =>
-        (!college || s.collegeCode === college) &&
         (branch ? s.branch === branch : true) &&
         (batch ? String(s.batch) === String(batch) : true) &&
         s.semesters && s.semesters[semKey]
@@ -957,12 +724,8 @@ const TeachersCorner = () => {
       const chartMaxW = pageW - margin * 2;
       const chartMaxH = pageH - contentTop - 20;
 
-      // Helper: get college display name
-      let collegeName = 'All Colleges';
-      if (college) {
-        const found = allColleges.find(c => c.code === college);
-        collegeName = (found && found.name) ? found.name : college;
-      }
+      // Fixed college name for BLDE
+      let collegeName = 'BLDEAS COLLEGE OF ENGINEERING';
       const headerText = `${collegeName} | Sem ${sem} | ${branch || 'All Branches'} | Batch: ${batch || 'All'}`;
 
       // Helper: render a chart to a temporary canvas and return image data
@@ -1190,12 +953,7 @@ const TeachersCorner = () => {
       }
 
       // File name
-      let collegeLabel = 'all';
-      if (college) {
-        const found = allColleges.find(c => c.code === college);
-        if (found && found.name) collegeLabel = found.name.replace(/[^a-zA-Z0-9]/g, '_');
-        else collegeLabel = college;
-      }
+      let collegeLabel = 'BLDE';
       pdf.save(`charts_sem${sem}_${collegeLabel}_${branch || 'all'}_${batch || 'all'}.pdf`);
     } catch (err) {
       console.error('PDF export error:', err);
@@ -1208,11 +966,49 @@ const TeachersCorner = () => {
   // Chart feature toggle state
   const [chartType, setChartType] = useState('pie'); // 'pie' or 'bar' or 'dept'
 
+  // --- Chart Loading and network state logic ---
+  const [chartLoading, setChartLoading] = React.useState(false);
+  const [networkStatus, setNetworkStatus] = React.useState(navigator.onLine);
+  const loadingTimeout = React.useRef(null);
+
+  React.useEffect(() => {
+    function handleOnline() { setNetworkStatus(true); }
+    function handleOffline() { setNetworkStatus(false); }
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (chartType === 'pie') {
+      setChartLoading(true);
+      if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
+      // If data loads within 2s, chartLoading will be set to false below
+      loadingTimeout.current = setTimeout(() => {
+        setChartLoading(false);
+      }, 2000); // 2 seconds for slow network
+    } else {
+      setChartLoading(false);
+      if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
+    }
+    // eslint-disable-next-line
+  }, [chartType, passFailStats.pass, passFailStats.fail]);
+
+  React.useEffect(() => {
+    // If data is available, stop loading
+    if (chartType === 'pie' && (passFailStats.pass > 0 || passFailStats.fail > 0)) {
+      setChartLoading(false);
+      if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
+    }
+  }, [passFailStats, chartType]);
   // Department-wise (branch-wise) result chart data
   // Only for current semester, all branches, all batches
   const deptChartData = React.useMemo(() => {
     const semKey = String(sem);
-    // Group students by branch, filter by batch and college if selected
+    // Group students by branch, filter by batch
     const branchMap = {};
     let totalAppeared = 0, totalPassed = 0, totalFCD = 0;
     // Helper to get short name from branch name
@@ -1224,7 +1020,6 @@ const TeachersCorner = () => {
       return words.map(w => w[0].toUpperCase()).join('');
     }
     data.forEach(s => {
-      if (college && s.collegeCode !== college) return;
       if (batch && String(s.batch) !== String(batch)) return;
       if (!s.semesters || !s.semesters[semKey]) return;
       const branchName = s.branch || 'Unknown';
@@ -1281,29 +1076,39 @@ const TeachersCorner = () => {
         {
           label: 'Appeared',
           data: appearedArr,
-          backgroundColor: '#1976d2', // blue
+          backgroundColor: '#0f172a', // Navy
         },
         {
           label: 'Passed',
           data: passedArr,
-          backgroundColor: '#d32f2f', // red
+          backgroundColor: '#0d9488', // Teal
         },
         {
           label: 'FCD',
           data: fcdArr,
-          backgroundColor: '#388e3c', // green
+          backgroundColor: '#7c3aed', // Purple
         },
         {
           label: 'Passing%',
           data: passingPctArr,
-          backgroundColor: '#7c4dff', // purple
+          backgroundColor: '#f59e0b', // Amber
         },
       ],
     };
-  }, [data, sem, batch, college, revalMode]);
+  }, [data, sem, batch, revalMode]);
 
   return (
     <Box sx={{ maxWidth: 600, mx: "auto", mt: 6 }}>
+      {loading ? (
+        <Card sx={{ p: 4, borderRadius: 4, boxShadow: 3 }}>
+          <Box p={4} display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="50vh">
+            <CircularProgress size={60} thickness={5} sx={{ color: '#1e40af', mb: 3 }} />
+            <Typography variant="h6" sx={{ color: '#1e40af', mt: 2 }}>
+              Loading Teachers Corner...
+            </Typography>
+          </Box>
+        </Card>
+      ) : (
       <Card sx={{ p: 4, borderRadius: 4, boxShadow: 3 }}>
         <Box display="flex" justifyContent="flex-end" alignItems="center" mb={1}>
           <button
@@ -1328,15 +1133,7 @@ const TeachersCorner = () => {
           Teachers Corner
         </Typography>
         <Box display="flex" gap={2} mb={3}>
-          <FormControl fullWidth>
-            <InputLabel>College</InputLabel>
-            <Select value={college} label="College" onChange={e => { setCollege(e.target.value); setBatch(""); setBranch(""); }}>
-              <MenuItem value="">All</MenuItem>
-              {allColleges.map(c => (
-                <MenuItem key={c.code} value={c.code}>{c.name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+
           <FormControl fullWidth>
             <InputLabel>Batch</InputLabel>
             <Select value={batch} label="Batch" onChange={(e) => setBatch(e.target.value)}>
@@ -1368,7 +1165,6 @@ const TeachersCorner = () => {
                 new Set(
                   data
                     .filter(s =>
-                      (!college || s.collegeCode === college) &&
                       (batch ? String(s.batch) === String(batch) : true) &&
                       (branch ? s.branch === branch : true)
                     )
@@ -1412,10 +1208,11 @@ const TeachersCorner = () => {
               padding: '8px 24px',
               borderRadius: 8,
               border: isActive ? '2px solid #1e40af' : '1px solid #cbd5e1',
-              background: isActive ? '#1e40af' : '#ffffff',
+              background: isActive ? 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)' : '#ffffff',
               fontWeight: 700,
               cursor: 'pointer',
               color: isActive ? '#ffffff' : '#475569',
+              boxShadow: isActive ? '0 4px 12px rgba(15,23,42,0.2)' : 'none',
               minWidth: buttonWidth,
               maxWidth: buttonWidth,
               width: buttonWidth,
@@ -1446,17 +1243,20 @@ const TeachersCorner = () => {
                 onClick={() => setShowExportDialog(true)}
                 style={{
                   padding: '8px 24px',
-                  borderRadius: 8,
-                  border: '2px solid #0ea5e9',
-                  background: '#f0f9ff',
+                  background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)', // Teal variant for distinct action
                   fontWeight: 700,
                   cursor: 'pointer',
-                  color: '#0369a1',
+                  color: '#ffffff',
+                  border: 'none',
                   minWidth: buttonWidth,
                   maxWidth: buttonWidth,
                   width: buttonWidth,
                   whiteSpace: 'nowrap',
+                  boxShadow: '0 4px 12px rgba(13,148,136,0.2)',
+                  transition: 'all 0.3s',
                 }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
               >
                 Export to Excel
               </button>
@@ -1465,17 +1265,20 @@ const TeachersCorner = () => {
                 disabled={exportingPdf}
                 style={{
                   padding: '8px 24px',
-                  borderRadius: 8,
-                  border: '2px solid #0ea5e9',
-                  background: exportingPdf ? '#e2e8f0' : '#f0f9ff',
+                  background: exportingPdf ? '#e2e8f0' : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', // Purple variant for distinct action
                   fontWeight: 700,
                   cursor: exportingPdf ? 'not-allowed' : 'pointer',
-                  color: '#0369a1',
+                  color: '#ffffff',
+                  border: 'none',
                   minWidth: buttonWidth,
                   maxWidth: buttonWidth,
                   width: buttonWidth,
                   whiteSpace: 'nowrap',
+                  boxShadow: exportingPdf ? 'none' : '0 4px 12px rgba(124,58,237,0.2)',
+                  transition: 'all 0.3s',
                 }}
+                onMouseOver={(e) => !exportingPdf && (e.currentTarget.style.transform = 'translateY(-2px)')}
+                onMouseOut={(e) => !exportingPdf && (e.currentTarget.style.transform = 'translateY(0)')}
               >
                 {exportingPdf ? 'Exporting...' : 'Export Charts PDF'}
               </button>
@@ -1547,52 +1350,13 @@ const TeachersCorner = () => {
         {/* Conditionally Render Chart Feature */}
         {/* Calculate total students for selected sem and branch */}
         {(() => {
-          // --- Loading and network state logic ---
-          const [loading, setLoading] = React.useState(false);
-          const [networkStatus, setNetworkStatus] = React.useState(navigator.onLine);
-          const loadingTimeout = React.useRef(null);
-
-          React.useEffect(() => {
-            function handleOnline() { setNetworkStatus(true); }
-            function handleOffline() { setNetworkStatus(false); }
-            window.addEventListener('online', handleOnline);
-            window.addEventListener('offline', handleOffline);
-            return () => {
-              window.removeEventListener('online', handleOnline);
-              window.removeEventListener('offline', handleOffline);
-            };
-          }, []);
-
-          React.useEffect(() => {
-            if (chartType === 'pie') {
-              setLoading(true);
-              if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
-              // If data loads within 2s, loading will be set to false below
-              loadingTimeout.current = setTimeout(() => {
-                setLoading(false);
-              }, 2000); // 2 seconds for slow network
-            } else {
-              setLoading(false);
-              if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
-            }
-            // eslint-disable-next-line
-          }, [chartType, passFailStats.pass, passFailStats.fail]);
-
-          React.useEffect(() => {
-            // If data is available, stop loading
-            if (chartType === 'pie' && (passFailStats.pass > 0 || passFailStats.fail > 0)) {
-              setLoading(false);
-              if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
-            }
-          }, [passFailStats, chartType]);
-
           // --- End loading/network logic ---
           const semKey = String(sem);
           const included = data.filter(
-            (s) => (!college || s.collegeCode === college) && (branch ? s.branch === branch : true) && (batch ? String(s.batch) === String(batch) : true) && s.semesters && s.semesters[semKey]
+            (s) => (branch ? s.branch === branch : true) && (batch ? String(s.batch) === String(batch) : true) && s.semesters && s.semesters[semKey]
           );
           const excluded = data.filter(
-            (s) => (!college || s.collegeCode === college) && (branch ? s.branch === branch : true) && (batch ? String(s.batch) === String(batch) : true) && (!s.semesters || !s.semesters[semKey])
+            (s) => (branch ? s.branch === branch : true) && (batch ? String(s.batch) === String(batch) : true) && (!s.semesters || !s.semesters[semKey])
           );
           const totalStudents = included.length;
           if (chartType === 'pie') {
@@ -1613,7 +1377,7 @@ const TeachersCorner = () => {
                       </div>
                       <Typography align="center" color="text.secondary">No internet connection. Please check your network.</Typography>
                     </Box>
-                  ) : loading ? (
+                  ) : chartLoading ? (
                     <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" sx={{ mt: 4 }}>
                       <div className="loading-spinner" style={{ marginBottom: 12 }}>
                         <svg width="48" height="48" viewBox="0 0 50 50">
@@ -1861,7 +1625,7 @@ const TeachersCorner = () => {
           return null;
         })()}
       </Card>
-      
+      )}
     </Box>
   );
 };

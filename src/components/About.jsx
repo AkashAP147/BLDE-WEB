@@ -25,7 +25,7 @@ export default function About() {
             For community outreach and networking, connect with <b>Khajesaheb Walikar</b> at <a href="mailto:swalikarsaddam@gmail.com" style={{ color: '#0f172a', fontWeight: 700 }}>swalikarsaddam@gmail.com</a>.
           </Typography>
 
-          <Divider sx={{ my: 2, borderColor: '#e2e8f0' }} />
+<Divider sx={{ my: 2, borderColor: '#e2e8f0' }} />
           <Typography variant="h6" align="center" sx={{ fontWeight: 800, color: '#0f172a', mb: 1 }}>
             In Collaboration With
           </Typography>

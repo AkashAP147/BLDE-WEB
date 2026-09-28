@@ -1,4 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import { StudentDataProvider, useStudentData } from "./StudentDataContext";
+import SyncIcon from '@mui/icons-material/Sync';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
 import HomeIcon from '@mui/icons-material/Home';
@@ -17,41 +19,41 @@ import logo from "./assets/bldeacet-logo.webp";
 import "./App.css";
 
 function App() {
-      // Mobile menu button visibility state
-      const [menuBtnVisible, setMenuBtnVisible] = useState(true);
-      useEffect(() => {
-        function handleMenuBtnScroll() {
-          setMenuBtnVisible(window.scrollY < 10);
-        }
-        window.addEventListener('scroll', handleMenuBtnScroll);
-        return () => window.removeEventListener('scroll', handleMenuBtnScroll);
-      }, []);
-    // Footer visibility state
-    const [footerVisible, setFooterVisible] = useState(false);
-    useEffect(() => {
-      let lastScrollY = window.scrollY;
-      let ticking = false;
-      function handleScroll() {
-        if (!ticking) {
-          window.requestAnimationFrame(() => {
-            const scrollY = window.scrollY;
-            const windowHeight = window.innerHeight;
-            const docHeight = document.documentElement.scrollHeight;
-            // Show footer if at bottom, hide if scrolling up
-            if (windowHeight + scrollY >= docHeight - 2) {
-              setFooterVisible(true);
-            } else if (scrollY < lastScrollY) {
-              setFooterVisible(false);
-            }
-            lastScrollY = scrollY;
-            ticking = false;
-          });
-          ticking = true;
-        }
+  // Mobile menu button visibility state
+  const [menuBtnVisible, setMenuBtnVisible] = useState(true);
+  useEffect(() => {
+    function handleMenuBtnScroll() {
+      setMenuBtnVisible(window.scrollY < 10);
+    }
+    window.addEventListener('scroll', handleMenuBtnScroll);
+    return () => window.removeEventListener('scroll', handleMenuBtnScroll);
+  }, []);
+  // Footer visibility state
+  const [footerVisible, setFooterVisible] = useState(false);
+  useEffect(() => {
+    let lastScrollY = window.scrollY;
+    let ticking = false;
+    function handleScroll() {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const scrollY = window.scrollY;
+          const windowHeight = window.innerHeight;
+          const docHeight = document.documentElement.scrollHeight;
+          // Show footer if at bottom, hide if scrolling up
+          if (windowHeight + scrollY >= docHeight - 2) {
+            setFooterVisible(true);
+          } else if (scrollY < lastScrollY) {
+            setFooterVisible(false);
+          }
+          lastScrollY = scrollY;
+          ticking = false;
+        });
+        ticking = true;
       }
-      window.addEventListener('scroll', handleScroll);
-      return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
+    }
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
   // Password state for All Students page
   const [studentsPass, setStudentsPass] = useState("");
   const [studentsAuth, setStudentsAuth] = useState(false);
@@ -75,7 +77,7 @@ function App() {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 80 }}>
         <h2>Enter your Password </h2>
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 300 }}>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16, width: '90%', maxWidth: 300 }}>
           <input
             type="password"
             value={input}
@@ -96,7 +98,7 @@ function App() {
     const [error, setError] = useState("");
     const handleSubmit = (e) => {
       e.preventDefault();
-      if (input === "123") {
+      if (input === "BLDE@root123") {
         setTeachersAuth(true);
         setTeachersPass(input);
       } else {
@@ -106,7 +108,7 @@ function App() {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 80 }}>
         <h2>Enter Teachers Corner Password</h2>
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 300 }}>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16, width: '90%', maxWidth: 300 }}>
           <input
             type="password"
             value={input}
@@ -122,6 +124,39 @@ function App() {
   }
 
 
+  // Sync status banner component
+  function SyncStatusBanner() {
+    const { syncing, syncProgress, lastSyncedAt, syncNow, clearAndSync } = useStudentData();
+    
+    const formatDate = (ts) => {
+      if (!ts) return 'Never';
+      const d = new Date(ts);
+      return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+
+    return (
+      <>
+        {/* Sync status bar */}
+        {(syncing || syncProgress) && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+            background: 'linear-gradient(90deg, #0f172a 0%, #1e3a8a 100%)',
+            color: '#fff', padding: '8px 16px', fontSize: 13, fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center',
+            animation: 'slideDown 0.3s ease',
+          }}>
+            {syncing && (
+              <SyncIcon sx={{ fontSize: 18, animation: 'spin 1s linear infinite', '@keyframes spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } } }} />
+            )}
+            {syncProgress}
+          </div>
+        )}
+
+
+      </>
+    );
+  }
+
   // Mobile menu state
   const [menuOpen, setMenuOpen] = useState(false);
   // Close menu on route change
@@ -131,16 +166,18 @@ function App() {
 
   return (
     <Router>
+      <StudentDataProvider>
+      <SyncStatusBanner />
       {/* Responsive Nav */}
       <nav>
         {/* Desktop Nav */}
-        <div className="nav-desktop" style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          padding: '0 60px', 
+        <div className="nav-desktop" style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 60px',
           height: '85px',
-          justifyContent: 'space-between', 
-          background: 'linear-gradient(90deg, #0f172a 0%, #1e3a8a 100%)', 
+          justifyContent: 'space-between',
+          background: 'linear-gradient(90deg, #0f172a 0%, #1e3a8a 100%)',
           boxShadow: '0 4px 25px rgba(0,0,0,0.2)',
           borderBottom: '1px solid rgba(255,255,255,0.08)'
         }}>
@@ -164,6 +201,7 @@ function App() {
             <Link to="/teachers-corner" className="nav-link" style={{ textDecoration: 'none', fontWeight: 700, color: '#f8fafc', fontSize: 18, transition: 'all 0.3s' }}>Teachers Corner</Link>
             <Link to="/students" className="nav-link" style={{ textDecoration: 'none', fontWeight: 700, color: '#f8fafc', fontSize: 18, transition: 'all 0.3s' }}>Admin Corner</Link>
             <Link to="/about" className="nav-link" style={{ textDecoration: 'none', fontWeight: 700, color: '#f8fafc', fontSize: 18, transition: 'all 0.3s' }}>About</Link>
+            
           </div>
         </div>
         {/* Mobile Nav Header */}
@@ -352,9 +390,10 @@ function App() {
           transition: 'opacity 0.3s',
           opacity: footerVisible ? 1 : 0,
         }}>
-          Powered by <span style={{ color: '#ffb300', fontWeight:  100}}>Akash Patil</span> | <span style={{ color: '#80bfda', fontWeight: 400 }}>&copy; {new Date().getFullYear()} Build</span>
+          Powered by <span style={{ color: '#ffb300', fontWeight: 100 }}>Akash Patil</span> | <span style={{ color: '#80bfda', fontWeight: 400 }}>&copy; {new Date().getFullYear()} Build</span>
         </div>
       )}
+    </StudentDataProvider>
     </Router>
   );
 }

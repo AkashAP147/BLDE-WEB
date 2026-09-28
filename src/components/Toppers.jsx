@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { db } from "../firebase";
-import { ref, onValue } from "firebase/database";
+import { useStudentData } from "../StudentDataContext";
+import { ref, onValue, query, orderByKey, startAt, endAt } from "firebase/database";
 import { normalizeStudents } from "../normalizeStudents";
 import {
   Box,
@@ -17,6 +18,7 @@ import {
 } from "@mui/material";
 
 export default function Toppers() {
+  const { students: cachedStudents, dbBranches } = useStudentData();
   const [toppers, setToppers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [semFilter, setSemFilter] = useState("");
@@ -27,11 +29,12 @@ export default function Toppers() {
   const [allBranches, setAllBranches] = useState([]);
   const [expandedUsn, setExpandedUsn] = useState(null); // track which topper row is expanded
   const [searchQuery, setSearchQuery] = useState(""); // search by name or USN
+  // dbBranches now comes from context
 
   useEffect(() => {
-    const studentsRef = ref(db, "students");
-    onValue(studentsRef, (snapshot) => {
-      const students = normalizeStudents(snapshot.val() || {});
+    if (!cachedStudents || Object.keys(cachedStudents).length === 0) return;
+    {
+      const students = cachedStudents;
       // Collect all unique semesters, batches, branches
       const semSet = new Set();
       const batchSet = new Set();
@@ -95,7 +98,7 @@ export default function Toppers() {
             allToppers.push({
               usn,
               name: data.name,
-              branch: data.branch,
+              branch: data.branch_code || data.branch,
               batch: data.batch,
               sem,
               total,
@@ -107,8 +110,8 @@ export default function Toppers() {
       allToppers.sort((a, b) => b.total - a.total);
       setToppers(allToppers);
       setLoading(false);
-    });
-  }, []);
+    }
+  }, [cachedStudents]);
 
   // Helper to calculate percentage like Dashboard (total/maxMarks for all subjects)
   const getPercentage = (topper, studentsMap) => {
@@ -134,26 +137,24 @@ export default function Toppers() {
   const [studentsMap, setStudentsMap] = useState({});
 
   useEffect(() => {
-    // Listen to students DB for percentage calculation
-    const studentsRef = ref(db, "students");
-    return onValue(studentsRef, (snapshot) => {
-      setStudentsMap(normalizeStudents(snapshot.val() || {}));
-    });
-  }, []);
+    if (cachedStudents && Object.keys(cachedStudents).length > 0) {
+      setStudentsMap(cachedStudents);
+    }
+  }, [cachedStudents]);
 
   return (
-    <Box sx={{ minHeight: '100vh', py: 6, px: { xs: 0, sm: 0 } }}>
+    <Box sx={{ minHeight: '100vh', py: { xs: 1, sm: 6 }, px: { xs: 0.5, sm: 0 } }}>
       <Card
         sx={{
-          mt: { xs: 2, sm: 4 },
-          maxWidth: { xs: '99vw', sm: 800 },
-          width: { xs: '99vw', sm: 'auto' },
+          mt: { xs: 0.5, sm: 4 },
+          maxWidth: { xs: '100%', sm: 800 },
+          width: { xs: '100%', sm: 'auto' },
           mx: 'auto',
-          p: { xs: 1, sm: 4 },
+          p: { xs: 0.5, sm: 4 },
           background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
-          borderRadius: 3,
+          border: { xs: 'none', sm: '1px solid #e2e8f0' },
+          boxShadow: { xs: 'none', sm: '0 4px 24px rgba(0,0,0,0.06)' },
+          borderRadius: { xs: 1, sm: 3 },
         }}
       >
         <CardContent>
@@ -163,13 +164,14 @@ export default function Toppers() {
             sx={{
               fontWeight: 800,
               color: '#1e40af',
-              mb: 5,
+              mb: { xs: 2, sm: 5 },
+              fontSize: { xs: '1.4rem', sm: '2.125rem' },
             }}
           >
             Toppers
           </Typography>
           {/* Filters */}
-          <Box mb={2} display="flex" flexWrap="wrap" gap={2} justifyContent="center">
+          <Box mb={2} display="flex" flexWrap="wrap" gap={{ xs: 1, sm: 2 }} justifyContent="center" sx={{ px: { xs: 0.5, sm: 0 } }}>
             {/* Batch Filter */}
             <select
               value={batchFilter}
@@ -178,7 +180,7 @@ export default function Toppers() {
                 setBranchFilter("");
                 setSemFilter("");
               }}
-              style={{ width: 120, padding: 8, borderRadius: 6, marginTop: 4, color: batchFilter ? '#000000' : '#353232' }}
+              style={{ width: 'auto', minWidth: 80, maxWidth: 130, flex: '1 1 auto', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, color: batchFilter ? '#000000' : '#353232', background: '#fff' }}
             >
               <option value="" disabled hidden>Batch</option>
               {Array.from(
@@ -189,7 +191,7 @@ export default function Toppers() {
               )
                 .sort()
                 .map(b => (
-                  <option key={b} value={b}>{b}</option>
+                  <option key={b} value={b}>{dbBranches[b?.toUpperCase()] || b}</option>
                 ))}
             </select>
             {/* Branch Filter (filtered by batch) */}
@@ -199,7 +201,7 @@ export default function Toppers() {
                 setBranchFilter(e.target.value);
                 setSemFilter("");
               }}
-              style={{ width: 120, padding: 8, borderRadius: 6, marginTop: 4, color: branchFilter ? '#000000' : '#353232' }}
+              style={{ width: 'auto', minWidth: 80, maxWidth: 150, flex: '1 1 auto', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, color: branchFilter ? '#000000' : '#353232', background: '#fff' }}
             >
               <option value="" disabled hidden>Branch</option>
               {Array.from(
@@ -209,12 +211,12 @@ export default function Toppers() {
                       (batchFilter ? s.batch === batchFilter : true)
                     )
                     .map(s => s.branch)
-                    .filter(b => b && b !== "undefined" && b !== "null")
+                    .filter(b => b && b !== "undefined" && b !== "null" && b.toLowerCase() !== "unknown")
                 )
               )
                 .sort()
                 .map(b => (
-                  <option key={b} value={b}>{b}</option>
+                  <option key={b} value={b}>{dbBranches[b?.toUpperCase()] || b}</option>
                 ))}
             </select>
             {/* Search Filter */}
@@ -223,7 +225,7 @@ export default function Toppers() {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search Name / USN"
-              style={{ width: 180, padding: 8, borderRadius: 6, marginTop: 4, border: '1px solid #cbd5e1', outline: 'none', color: '#000' }}
+              style={{ width: 'auto', minWidth: 100, flex: '1 1 auto', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none', color: '#000', fontSize: 13, background: '#fff' }}
             />
           </Box>
           {/* Semester Filter - horizontal sliding window, mobile fix */}
@@ -266,15 +268,15 @@ export default function Toppers() {
                     key={s}
                     onClick={() => setSemFilter(s)}
                     style={{
-                      minWidth: 70,
+                      minWidth: 56,
                       fontWeight: 700,
-                      borderRadius: 6,
-                      background: semFilter === s ? '#1e40af' : '#f1f5f9',
+                      borderRadius: 8,
+                      background: semFilter === s ? 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)' : '#f1f5f9',
                       color: semFilter === s ? '#fff' : '#475569',
-                      fontSize: 15,
-                      padding: '6px 18px',
-                      marginRight: 8,
-                      border: 'none',
+                      fontSize: 13,
+                      padding: '6px 12px',
+                      marginRight: 6,
+                      border: semFilter === s ? 'none' : '1px solid #e2e8f0',
                       boxShadow: semFilter === s ? '0 2px 8px rgba(30,64,175,0.15)' : 'none',
                       transition: 'all 0.2s',
                       flex: '0 0 auto',
@@ -290,27 +292,26 @@ export default function Toppers() {
           {loading ? (
             <Typography align="center">Loading...</Typography>
           ) : (
-            <Box sx={{ width: '100%', display: 'flex', justifyContent: { xs: 'center', sm: 'flex-start' } }}>
+            <Box sx={{ width: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <TableContainer
                 component={Paper}
                 sx={{
                   background: '#ffffff',
                   borderRadius: 3,
-                  width: { xs: 'auto', sm: '100%' },
-                  minWidth: { xs: 0, sm: 'auto' },
-                  maxWidth: { xs: '100vw', sm: 'none' },
+                  width: '100%',
                   overflowX: 'auto',
+                  WebkitOverflowScrolling: 'touch',
                   boxShadow: 0,
                 }}
               >
                 <Table
                   size="small"
                   sx={{
-                    minWidth: 500,
+                    minWidth: 440,
                     width: '100%',
-                    margin: { xs: '0 auto', sm: 0 },
                     '& th, & td': {
-                      padding: { xs: '4px 6px', sm: '8px 12px' },
+                      padding: { xs: '5px 4px', sm: '8px 12px' },
+                      fontSize: { xs: '0.7rem', sm: '0.875rem' },
                     },
                   }}
                 >
@@ -340,7 +341,7 @@ export default function Toppers() {
                         .filter(s =>
                           searchQuery
                             ? (s.name && s.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                              (s.usn && s.usn.toLowerCase().includes(searchQuery.toLowerCase()))
+                            (s.usn && s.usn.toLowerCase().includes(searchQuery.toLowerCase()))
                             : true
                         )
                         .map(s => (
@@ -353,7 +354,7 @@ export default function Toppers() {
                             <TableCell>{s.rank}</TableCell>
                             <TableCell>{s.name}</TableCell>
                             <TableCell>{s.usn}</TableCell>
-                            <TableCell>{s.branch}</TableCell>
+                            <TableCell>{dbBranches[s.branch?.toUpperCase()] || s.branch}</TableCell>
                             <TableCell>{s.sem}</TableCell>
                             <TableCell>{s.total}</TableCell>
                             <TableCell>{getPercentage(s, studentsMap)}%</TableCell>
@@ -380,16 +381,17 @@ export default function Toppers() {
                 onClick={() => setExpandedUsn(null)}
                 style={{
                   position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                  background: 'rgba(0,0,0,0.45)', zIndex: 1300,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.5)', zIndex: 1300,
+                  display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
                 }}
               >
                 <div
                   onClick={e => e.stopPropagation()}
                   style={{
-                    background: '#fff', borderRadius: 16, padding: '24px 20px 20px',
-                    boxShadow: '0 8px 40px rgba(0,0,0,0.18)', maxWidth: 700, width: '95vw',
-                    maxHeight: '85vh', overflowY: 'auto', position: 'relative',
+                    background: '#fff', borderRadius: '16px 16px 0 0', padding: '20px 12px 28px',
+                    boxShadow: '0 -4px 40px rgba(0,0,0,0.18)', maxWidth: 700, width: '100%',
+                    maxHeight: '80vh', overflowY: 'auto', position: 'relative',
+                    WebkitOverflowScrolling: 'touch',
                   }}
                 >
                   {/* Close X button */}
@@ -414,7 +416,7 @@ export default function Toppers() {
                     USN: {usn} &nbsp;|&nbsp; Semester {sem}
                   </Typography>
                   {semSubjects.length > 0 ? (
-                    <TableContainer component={Paper} sx={{ boxShadow: 0, borderRadius: 2 }}>
+                    <TableContainer component={Paper} sx={{ boxShadow: 0, borderRadius: 2, overflowX: 'auto' }}>
                       <Table size="small" sx={{ '& th, & td': { padding: { xs: '4px 6px', sm: '6px 12px' } } }}>
                         <TableHead>
                           <TableRow sx={{ background: '#1e40af' }}>
@@ -458,3 +460,4 @@ export default function Toppers() {
     </Box>
   );
 }
+

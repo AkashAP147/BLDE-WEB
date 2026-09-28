@@ -56,7 +56,8 @@ import { Pie, Bar } from "react-chartjs-2";
 import { Chart, ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from "chart.js";
 Chart.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 import { db } from "../firebase";
-import { ref, onValue } from "firebase/database";
+import { useStudentData } from "../StudentDataContext";
+import { ref, onValue, query, orderByKey, startAt, endAt } from "firebase/database";
 import { normalizeStudents } from "../normalizeStudents";
 import jsPDF from "jspdf";
 
@@ -85,7 +86,7 @@ const TeachersCorner = () => {
     const semKey = String(sem);
     const filtered = data.filter(
       (s) =>
-        (branch ? s.branch === branch : true) &&
+        (branch ? (s.branch_code || s.branch) === branch : true) &&
         (batch ? String(s.batch) === String(batch) : true) &&
         s.semesters && s.semesters[semKey]
     );
@@ -159,7 +160,7 @@ const TeachersCorner = () => {
               'Sr.No': idx === 0 ? srNo : '',
               'Name': idx === 0 ? s.name : '',
               'USN': idx === 0 ? s.usn : '',
-              'Branch': idx === 0 ? s.branch : '',
+              'Branch': idx === 0 ? (dbBranches[(s.branch_code || s.branch)?.toUpperCase()] || (s.branch_code || s.branch)) : '',
               'Batch': idx === 0 ? s.batch : '',
               'Total Backlogs': idx === 0 ? backlogEntries.length : '',
               'Subject Code': f.code,
@@ -179,7 +180,7 @@ const TeachersCorner = () => {
       const row = {
         Name: s.name,
         USN: usnValue,
-        Branch: s.branch,
+        Branch: dbBranches[(s.branch_code || s.branch)?.toUpperCase()] || (s.branch_code || s.branch),
         Batch: s.batch,
         Semester: semKey,
       };
@@ -249,7 +250,7 @@ const TeachersCorner = () => {
     // Data rows
     filtered.forEach(s => {
       const semSubjects = s.semesters[semKey] || {};
-      const row = [s.name, s.usn || s.USN || '', s.branch, s.batch];
+      const row = [s.name, s.usn || s.USN || '', dbBranches[(s.branch_code || s.branch)?.toUpperCase()] || (s.branch_code || s.branch), s.batch];
       let totalMarks = 0;
       let maxMarksSum = 0;
       let failedSubjects = [];
@@ -546,33 +547,34 @@ const TeachersCorner = () => {
     XLSX.writeFile(wb, `results_sem${semKey}_${branch || 'all'}_${batch || 'all'}.xlsx`);
   };
   const [sem, setSem] = useState(1);
+  const { students: cachedStudents, dbBranches } = useStudentData();
   const [branch, setBranch] = useState("");
   const [batch, setBatch] = useState("");
   const [data, setData] = useState([]);
+  // dbBranches now comes from context
   const [passFailStats, setPassFailStats] = useState({ pass: 0, fail: 0 });
   const [batches, setBatches] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const studentsRef = ref(db, "students");
-    onValue(studentsRef, (snapshot) => {
-      const val = normalizeStudents(snapshot.val() || {});
-      const arr = Object.values(val);
+    if (!cachedStudents || Object.keys(cachedStudents).length === 0) return;
+    {
+      const arr = Object.values(cachedStudents);
       setData(arr);
       // Extract unique batches and branches
       setBatches([...new Set(arr.map((s) => String(s.batch)))].sort());
-      setBranches([...new Set(arr.map((s) => s.branch))].sort());
+      setBranches([...new Set(arr.map((s) => s.branch_code || s.branch).filter(b => b && b.toLowerCase() !== 'unknown'))].sort());
       setLoading(false);
-    });
-  }, []);
+    }
+  }, [cachedStudents]);
 
   useEffect(() => {
     // Calculate pass/fail for selected sem, branch, batch, college, and revalMode
     const semKey = String(sem);
     const filtered = data.filter(
       (s) =>
-        (branch ? s.branch === branch : true) &&
+        (branch ? (s.branch_code || s.branch) === branch : true) &&
         (batch ? String(s.batch) === String(batch) : true) &&
         s.semesters && s.semesters[semKey]
     );
@@ -640,7 +642,7 @@ const TeachersCorner = () => {
     const semKey = String(sem);
     const filtered = data.filter(
       (s) =>
-        (branch ? s.branch === branch : true) &&
+        (branch ? (s.branch_code || s.branch) === branch : true) &&
         (batch ? String(s.batch) === String(batch) : true) &&
         s.semesters && s.semesters[semKey]
     );
@@ -1022,7 +1024,8 @@ const TeachersCorner = () => {
     data.forEach(s => {
       if (batch && String(s.batch) !== String(batch)) return;
       if (!s.semesters || !s.semesters[semKey]) return;
-      const branchName = s.branch || 'Unknown';
+      const mappedBranch = dbBranches[(s.branch_code || s.branch)?.toUpperCase()] || (s.branch_code || s.branch) || 'Unknown';
+      const branchName = mappedBranch;
       const branchShort = getShortBranchName(branchName);
       if (!branchMap[branchShort]) {
         branchMap[branchShort] = { appeared: 0, passed: 0, fcd: 0 };
@@ -1098,7 +1101,7 @@ const TeachersCorner = () => {
   }, [data, sem, batch, revalMode]);
 
   return (
-    <Box sx={{ maxWidth: 600, mx: "auto", mt: 6 }}>
+    <Box sx={{ maxWidth: { xs: '100%', sm: 600 }, mx: "auto", mt: { xs: 1, sm: 6 }, px: { xs: 0.5, sm: 0 } }}>
       {loading ? (
         <Card sx={{ p: 4, borderRadius: 4, boxShadow: 3 }}>
           <Box p={4} display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="50vh">
@@ -1109,7 +1112,7 @@ const TeachersCorner = () => {
           </Box>
         </Card>
       ) : (
-      <Card sx={{ p: 4, borderRadius: 4, boxShadow: 3 }}>
+      <Card sx={{ p: { xs: 1.5, sm: 4 }, borderRadius: { xs: 2, sm: 4 }, boxShadow: { xs: 0, sm: 3 }, border: { xs: 'none', sm: '1px solid #e2e8f0' } }}>
         <Box display="flex" justifyContent="flex-end" alignItems="center" mb={1}>
           <button
             style={{
@@ -1120,7 +1123,7 @@ const TeachersCorner = () => {
               color: revalMode === 'after' ? '#fff' : '#1e40af',
               fontWeight: 700,
               cursor: 'pointer',
-              minWidth: 160,
+              minWidth: 120, fontSize: 13,
               transition: 'all 0.2s',
             }}
             onClick={() => setRevalMode(revalMode === 'after' ? 'before' : 'after')}
@@ -1132,16 +1135,14 @@ const TeachersCorner = () => {
         <Typography variant="h4" align="center" gutterBottom>
           Teachers Corner
         </Typography>
-        <Box display="flex" gap={2} mb={3}>
+        <Box display="flex" flexDirection={{ xs: 'column', sm: 'row' }} gap={2} mb={3}>
 
           <FormControl fullWidth>
             <InputLabel>Batch</InputLabel>
             <Select value={batch} label="Batch" onChange={(e) => setBatch(e.target.value)}>
               <MenuItem value="">All</MenuItem>
               {batches.map((b) => (
-                <MenuItem key={b} value={b}>
-                  {b}
-                </MenuItem>
+                <MenuItem key={b} value={b}>{dbBranches[b?.toUpperCase()] || b}</MenuItem>
               ))}
             </Select>
           </FormControl>
@@ -1151,9 +1152,7 @@ const TeachersCorner = () => {
               <Select value={branch} label="Branch" onChange={(e) => setBranch(e.target.value)}>
                 {chartType !== 'bar' && <MenuItem value="">All</MenuItem>}
                 {branches.map((b) => (
-                  <MenuItem key={b} value={b}>
-                    {b}
-                  </MenuItem>
+                  <MenuItem key={b} value={b}>{dbBranches[b?.toUpperCase()] || b}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -1166,7 +1165,7 @@ const TeachersCorner = () => {
                   data
                     .filter(s =>
                       (batch ? String(s.batch) === String(batch) : true) &&
-                      (branch ? s.branch === branch : true)
+                      (branch ? (s.branch_code || s.branch) === branch : true)
                     )
                     .flatMap(s => Object.keys(s.semesters || {}))
                 )
@@ -1203,7 +1202,7 @@ const TeachersCorner = () => {
         >
           {/* Define a common width for all buttons */}
           {(() => {
-            const buttonWidth = 220;
+            const buttonWidth = window.innerWidth <= 480 ? 150 : 220;
             const activeStyle = (isActive) => ({
               padding: '8px 24px',
               borderRadius: 8,
@@ -1289,7 +1288,7 @@ const TeachersCorner = () => {
         {/* PDF Chart Export Selection Dialog */}
         {showPdfExportDialog && (
           <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.2)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: '#fff', padding: 32, borderRadius: 12, boxShadow: '0 2px 16px #0002', minWidth: 340 }}>
+            <div style={{ background: '#fff', padding: '24px 16px', borderRadius: 12, boxShadow: '0 2px 16px #0002', minWidth: 0, width: '92vw', maxWidth: 400 }}>
               <h3 style={{ marginBottom: 16 }}>Select Charts to Export</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
@@ -1327,7 +1326,7 @@ const TeachersCorner = () => {
         {/* Export Dialog */}
         {showExportDialog && (
           <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.2)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: '#fff', padding: 32, borderRadius: 12, boxShadow: '0 2px 16px #0002', minWidth: 320 }}>
+            <div style={{ background: '#fff', padding: '24px 16px', borderRadius: 12, boxShadow: '0 2px 16px #0002', minWidth: 0, width: '92vw', maxWidth: 380 }}>
               <h3 style={{ marginBottom: 16 }}>Export Results to Excel</h3>
               <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
                 <button
@@ -1353,10 +1352,10 @@ const TeachersCorner = () => {
           // --- End loading/network logic ---
           const semKey = String(sem);
           const included = data.filter(
-            (s) => (branch ? s.branch === branch : true) && (batch ? String(s.batch) === String(batch) : true) && s.semesters && s.semesters[semKey]
+            (s) => (branch ? (s.branch_code || s.branch) === branch : true) && (batch ? String(s.batch) === String(batch) : true) && s.semesters && s.semesters[semKey]
           );
           const excluded = data.filter(
-            (s) => (branch ? s.branch === branch : true) && (batch ? String(s.batch) === String(batch) : true) && (!s.semesters || !s.semesters[semKey])
+            (s) => (branch ? (s.branch_code || s.branch) === branch : true) && (batch ? String(s.batch) === String(batch) : true) && (!s.semesters || !s.semesters[semKey])
           );
           const totalStudents = included.length;
           if (chartType === 'pie') {
@@ -1586,7 +1585,7 @@ const TeachersCorner = () => {
                   <Typography variant="subtitle1" align="center" mb={1} fontWeight={700}>
                     Subject-wise Pass/Fail Percentage
                   </Typography>
-                  <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse', background: '#f8fafc', borderRadius: 8, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', minWidth: 420, borderCollapse: 'collapse', background: '#f8fafc', borderRadius: 8, overflow: 'hidden' }}>
                     <thead>
                       <tr style={{ background: '#e3e8ee' }}>
                         <th style={{ padding: 8, border: '1px solid #cbd5e1' }}>Subject Code</th>
@@ -1631,3 +1630,4 @@ const TeachersCorner = () => {
 };
 
 export default TeachersCorner;
+

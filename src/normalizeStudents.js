@@ -24,6 +24,11 @@ export function normalizeStudents(rawStudents) {
 
     const student = { ...studentData, usn: usn.toUpperCase() };
 
+    // Extract branch from USN if it's missing or says "Unknown" (e.g., "2BL23CS001" -> "CS")
+    if ((!student.branch || student.branch.toLowerCase() === 'unknown') && student.usn && student.usn.length >= 7) {
+      student.branch = student.usn.substring(5, 7).toUpperCase();
+    }
+
     // If semesters is already an object with string keys (old format), pass through
     if (student.semesters && !Array.isArray(student.semesters) && typeof student.semesters === 'object') {
       // Check if it's already in old format (subjects don't have "attempts" key)

@@ -6,7 +6,8 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { useLocation } from "react-router-dom";
 
 import { db } from "../firebase";
-import { ref, onValue } from "firebase/database";
+import { useStudentData } from "../StudentDataContext";
+import { ref, onValue, query, orderByKey, startAt, endAt } from "firebase/database";
 import { normalizeStudents } from "../normalizeStudents";
 import logo from "../assets/bldeacet-logo.webp";
 import {
@@ -33,7 +34,8 @@ import {
 
 export default function Dashboard() {
   const location = useLocation();
-  const [students, setStudents] = useState({});
+  // Students from cache/context
+  const { students, dbBranches, subjects: subjectsDb, loading: dataLoading } = useStudentData();
   const [usnInput, setUsnInput] = useState("");
   const [student, setStudent] = useState(null);
   const [selectedSem, setSelectedSem] = useState("");
@@ -159,23 +161,22 @@ export default function Dashboard() {
   const [showDates, setShowDates] = useState(false);
   const [showSubjectCode, setShowSubjectCode] = useState(false);
   const [credits, setCredits] = useState({});
-  const [subjectsDb, setSubjectsDb] = useState({}); // subjects collection from Firebase
+  // subjectsDb now comes from context
   const [expandedPrevAttempt, setExpandedPrevAttempt] = useState(null);
   const [expandedMainSubject, setExpandedMainSubject] = useState(null); // subject code of expanded main result row
+  // dbBranches now comes from context
 
   useEffect(() => {
-    const studentsRef = ref(db, "students");
-    return onValue(studentsRef, (snapshot) => {
-      const data = normalizeStudents(snapshot.val() || {});
-      setStudents(data);
+    // Students come from context now; handle pending fetch
+    if (students && Object.keys(students).length > 0) {
       if (pendingFetchRef.current) {
         const usn = pendingFetchRef.current;
         pendingFetchRef.current = null;
-        const usnKey = Object.keys(data).find(
+        const usnKey = Object.keys(students).find(
           (k) => k.toLowerCase() === usn.toLowerCase()
         );
         if (usnKey) {
-          setStudent({ usn: usnKey, ...data[usnKey] });
+          setStudent({ usn: usnKey, ...students[usnKey] });
           setSelectedSem("");
           setError("");
         } else {
@@ -184,16 +185,10 @@ export default function Dashboard() {
         }
         setLoading(false);
       }
-    });
-  }, []);
+    }
+  }, [students]);
 
-  // Fetch subjects (credits) from Firebase
-  useEffect(() => {
-    const subjectsRef = ref(db, "subjects");
-    return onValue(subjectsRef, (snapshot) => {
-      setSubjectsDb(snapshot.val() || {});
-    });
-  }, []);
+  // Subjects now come from context
 
   // Read USN from query string and auto-fetch
   useEffect(() => {
@@ -457,7 +452,7 @@ export default function Dashboard() {
                 {student.name}
               </Typography>
               <Typography sx={{ color: '#64748b', mb: 2, fontSize: { xs: 13, sm: 16 } }}>
-                {student.branch} | Batch {getBatchFromUsn(student)}
+                {dbBranches[(student.branch_code || student.branch)?.toUpperCase()] || student.branch} | Batch {getBatchFromUsn(student)}
               </Typography>
               <Typography sx={{ color: '#1e40af', mb: 1, fontSize: { xs: 13, sm: 15 } }}>
                 USN: {getDisplayUsn(student)}
@@ -1221,3 +1216,4 @@ export default function Dashboard() {
     </Box>
   );
 }
+

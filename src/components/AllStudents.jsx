@@ -2,9 +2,12 @@ import React, { useEffect, useState } from "react";
 import CircularProgress from "@mui/material/CircularProgress";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
-import { ref, onValue } from "firebase/database";
+import { useStudentData } from "../StudentDataContext";
+import { ref, onValue, query, orderByKey, startAt, endAt } from "firebase/database";
 import { normalizeStudents } from "../normalizeStudents";
-import { Box, Typography, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Card, CardContent, Grid, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
+import { Box, Typography, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Card, CardContent, Grid, Dialog, DialogTitle, DialogContent, DialogActions, Button, Tabs, Tab, TablePagination } from "@mui/material";
+import CachedIcon from '@mui/icons-material/Cached';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import { Pie } from "react-chartjs-2";
 import jsPDF from "jspdf";
 import { Chart, ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from "chart.js";
@@ -21,35 +24,43 @@ const branches = [
 
 export default function AllStudents() {
   const navigate = useNavigate();
-  const [students, setStudents] = useState({});
+  // Students + branches from cache/context
+  const { students, dbBranches } = useStudentData();
+  const [activeTab, setActiveTab] = useState(0);
+  const { syncing, lastSyncedAt, syncNow, clearAndSync } = useStudentData();
+  
+  const formatDate = (ts) => {
+    if (!ts) return 'Never';
+    const d = new Date(ts);
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
   const [loading, setLoading] = useState(true);
   const [branch, setBranch] = useState("");
   const [batch, setBatch] = useState("");
   const [semester, setSemester] = useState("");
   const [search, setSearch] = useState("");
   const [filtered, setFiltered] = useState([]);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
   const [showAdminDialog, setShowAdminDialog] = useState(false);
   const [showStudentStats, setShowStudentStats] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  // dbBranches now comes from context
   const [showPdfExportDialog, setShowPdfExportDialog] = useState(false);
   const [pdfChartSelections, setPdfChartSelections] = useState({ pie: true, bar: true, dept: true });
 
   useEffect(() => {
-    const studentsRef = ref(db, "students");
-    return onValue(studentsRef, (snapshot) => {
-      const data = normalizeStudents(snapshot.val() || {});
-      setStudents(data);
-
+    if (students && Object.keys(students).length > 0) {
       setLoading(false);
-    });
-  }, []);
+    }
+  }, [students]);
 
   // For stats: always use branch, batch, search filters, but NOT semester
   const statsBase = React.useMemo(() => {
     let arr = Object.entries(students).map(([usn, data]) => {
       return { usn, ...data };
     });
-    if (branch) arr = arr.filter((s) => s.branch_code === branch);
+    if (branch) arr = arr.filter((s) => (s.branch_code || s.branch) === branch);
     if (batch) arr = arr.filter((s) => s.batch === batch);
     if (search) arr = arr.filter((s) => s.usn.toLowerCase().includes(search.toLowerCase()) || (s.name && s.name.toLowerCase().includes(search.toLowerCase())));
     return arr;
@@ -81,11 +92,12 @@ export default function AllStudents() {
     let arr = Object.entries(students).map(([usn, data]) => {
       return { usn, ...data };
     });
-    if (branch) arr = arr.filter((s) => s.branch_code === branch);
+    if (branch) arr = arr.filter((s) => (s.branch_code || s.branch) === branch);
     if (batch) arr = arr.filter((s) => s.batch === batch);
     if (semester) arr = arr.filter((s) => s.semesters && Object.keys(s.semesters).includes(semester));
     if (search) arr = arr.filter((s) => s.usn.toLowerCase().includes(search.toLowerCase()) || (s.name && s.name.toLowerCase().includes(search.toLowerCase())));
     setFiltered(arr);
+    setPage(0);
   }, [students, branch, batch, semester, search]);
 
 
@@ -99,7 +111,8 @@ export default function AllStudents() {
             // Only include if student has at least one semester/result
             return s.semesters && Object.keys(s.semesters).length > 0;
           })
-          .map(([_, s]) => s.branch_code)
+          .map(([_, s]) => s.branch_code || s.branch)
+          .filter(b => b && b.toLowerCase() !== 'unknown')
       )
     ).sort();
   }, [students, batch]);
@@ -110,7 +123,7 @@ export default function AllStudents() {
       new Set(
         Object.entries(students)
           .filter(([usn, s]) => {
-            if (branch && s.branch_code !== branch) return false;
+            if (branch && (s.branch_code || s.branch) !== branch) return false;
             // Only include if student has at least one semester/result
             return s.semesters && Object.keys(s.semesters).length > 0;
           })
@@ -126,7 +139,7 @@ export default function AllStudents() {
         Object.entries(students)
           .filter(([usn, s]) => {
             if (batch && s.batch !== batch) return false;
-            if (branch && s.branch_code !== branch) return false;
+            if (branch && (s.branch_code || s.branch) !== branch) return false;
             return true;
           })
           .flatMap(([_, s]) => s.semesters ? Object.keys(s.semesters) : [])
@@ -168,7 +181,7 @@ export default function AllStudents() {
       const semKey = semester || (allSemesters.length > 0 ? String(allSemesters[allSemesters.length - 1]) : '1');
 
       // Get all unique branches
-      const allBranches = [...new Set(baseFiltered.map(s => s.branch).filter(Boolean))].sort();
+      const allBranches = [...new Set(baseFiltered.map(s => s.branch).filter(b => b && b.toLowerCase() !== 'unknown'))].sort();
 
       // Helper: render a chart to image
       const renderChartToImage = (type, chartData, chartOptions = {}, width = 800, height = 500, chartPlugins = []) => {
@@ -545,14 +558,56 @@ export default function AllStudents() {
   }
 
   return (
-    <Box p={2}>
-      <Card sx={{ maxWidth: 1200, margin: '32px auto', borderRadius: 6, boxShadow: '0 4px 24px rgba(0,0,0,0.06)', background: '#ffffff' }}>
+    <Box sx={{ p: { xs: 0.5, sm: 2 } }}>
+      <Card sx={{ maxWidth: { xs: '100%', sm: 1200 }, margin: { xs: '8px auto', sm: '32px auto' }, borderRadius: { xs: 2, sm: 6 }, boxShadow: { xs: 'none', sm: '0 4px 24px rgba(0,0,0,0.06)' }, background: '#ffffff', border: { xs: 'none', sm: '1px solid #e2e8f0' } }}>
+                <Box sx={{ borderBottom: 1, borderColor: 'divider', px: { xs: 1, sm: 4 }, pt: 2, mb: 2 }}>
+          <Tabs value={activeTab} onChange={(e, val) => setActiveTab(val)} aria-label="admin tabs" textColor="primary" indicatorColor="primary">
+            <Tab label="Student Directory" sx={{ fontWeight: 700, fontSize: { xs: 13, sm: 15 } }} />
+            <Tab label="Data Management" sx={{ fontWeight: 700, fontSize: { xs: 13, sm: 15 } }} />
+          </Tabs>
+        </Box>
+
         <CardContent>
-          <Typography variant="h3" gutterBottom sx={{ color: '#1e40af', fontWeight: 900, letterSpacing: '-2px', mb: 2, textAlign: 'center' }}>
-            Admin Corner
-          </Typography>
+          {activeTab === 1 ? (
+            <Box py={4}>
+              <Typography variant="h4" align="center" sx={{ fontWeight: 900, color: '#0f172a', mb: 2 }}>
+                Data Management
+              </Typography>
+              <Typography sx={{ color: '#475569', fontSize: { xs: 15, sm: 16 }, mb: 4, textAlign: 'center', maxWidth: 600, mx: 'auto' }}>
+                This portal caches results offline to save data and load instantly. The cache automatically refreshes every 30 days. You can also manually sync below.
+              </Typography>
+              <Box display="flex" flexDirection="column" gap={2} alignItems="center" mb={2}>
+                <Button
+                  variant="outlined"
+                  startIcon={<CachedIcon />}
+                  onClick={syncNow}
+                  disabled={syncing}
+                  sx={{ width: { xs: '100%', sm: 280 }, fontWeight: 700, borderRadius: 2, py: 1.5, fontSize: 16 }}
+                >
+                  {syncing ? 'Syncing...' : 'Sync Now'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<DeleteSweepIcon />}
+                  onClick={clearAndSync}
+                  disabled={syncing}
+                  sx={{ width: { xs: '100%', sm: 280 }, fontWeight: 700, borderRadius: 2, py: 1.5, fontSize: 16 }}
+                >
+                  Clear Cache & Refresh
+                </Button>
+                <Typography sx={{ color: '#94a3b8', fontSize: 14, mt: 2, fontWeight: 600 }}>
+                  Last synced: {formatDate(lastSyncedAt)}
+                </Typography>
+              </Box>
+            </Box>
+          ) : (
+            <>
+              <Typography variant="h3" gutterBottom sx={{ color: '#1e40af', fontWeight: 900, letterSpacing: '-2px', mb: 2, textAlign: 'center', fontSize: { xs: '1.4rem', sm: '3rem' } }}>
+                Admin Corner
+              </Typography>
           {/* Admin Stats Feature Button */}
-          <Box display="flex" justifyContent="center" gap={2} mb={2}>
+          <Box display="flex" justifyContent="center" gap={{ xs: 1, sm: 2 }} mb={2} flexWrap="wrap" sx={{ px: { xs: 0.5, sm: 0 } }}>
             <Button variant="contained" color="primary" sx={{ fontWeight: 700, borderRadius: 3 }} onClick={() => setShowStudentStats(true)}>
               Show Excluded Students
             </Button>
@@ -624,7 +679,9 @@ export default function AllStudents() {
                 <Select value={batch} label="Batch" onChange={(e) => setBatch(e.target.value)} sx={{ minWidth: 120 }}>
                   <MenuItem value="">All</MenuItem>
                   {batchOptions.map((b) => (
-                    <MenuItem key={b} value={b}>{b}</MenuItem>
+                    <MenuItem key={b} value={b}>
+                    {dbBranches[b?.toUpperCase()] || b}
+                  </MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -635,7 +692,7 @@ export default function AllStudents() {
                 <Select value={branch} label="Branch" onChange={(e) => setBranch(e.target.value)} sx={{ minWidth: 120 }}>
                   <MenuItem value="">All</MenuItem>
                   {branchOptions.map((b) => (
-                    <MenuItem key={b} value={b}>{branches.find(x => x.code === b)?.name || b}</MenuItem>
+                    <MenuItem key={b} value={b}>{dbBranches[b?.toUpperCase()] || b}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -667,7 +724,7 @@ export default function AllStudents() {
               Students found: {filtered.length}
             </Typography>
           </Box>
-          <TableContainer component={Paper} sx={{ borderRadius: 4, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+          <TableContainer component={Paper} sx={{ maxHeight: '65vh', borderRadius: { xs: 1, sm: 4 }, boxShadow: { xs: 'none', sm: '0 2px 12px rgba(0,0,0,0.06)' }, overflowX: 'auto', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -688,16 +745,16 @@ export default function AllStudents() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((s) => (
+                  filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((s) => (
                     <TableRow key={s.usn}>
                       <TableCell>{s.usn}</TableCell>
                       <TableCell>{s.name}</TableCell>
-                      <TableCell style={{ minWidth: 120, paddingLeft: 24, paddingRight: 24 }}>{s.batch}</TableCell>
-                      <TableCell style={{ minWidth: 120, paddingLeft: 24, paddingRight: 24 }}>{s.branch}</TableCell>
+                      <TableCell sx={{ minWidth: { xs: 50, sm: 120 }, px: { xs: '4px', sm: '24px' }, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>{s.batch}</TableCell>
+                      <TableCell sx={{ minWidth: { xs: 50, sm: 120 }, px: { xs: '4px', sm: '24px' }, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>{dbBranches[(s.branch_code || s.branch)?.toUpperCase()] || s.branch}</TableCell>
                       <TableCell>{s.semesters ? Object.keys(s.semesters).join(", ") : "-"}</TableCell>
                       <TableCell>
                         <button
-                          style={{ padding: '4px 12px', borderRadius: 6, background: '#1e40af', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}
+                          style={{ padding: '4px 10px', borderRadius: 6, background: '#1e40af', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
                           onClick={() => navigate(`/?usn=${encodeURIComponent(s.usn)}`)}
                         >
                           View Result
@@ -709,6 +766,17 @@ export default function AllStudents() {
               </TableBody>
             </Table>
           </TableContainer>
+          <TablePagination
+            rowsPerPageOptions={[25, 50, 75, 100]}
+            component="div"
+            count={filtered.length}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={(e, newPage) => setPage(newPage)}
+            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+          />
+            </>
+          )}
         </CardContent>
       </Card>
     </Box>
